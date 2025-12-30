@@ -1,3 +1,4 @@
+
 import pkg from 'pg';
 import dotenv from 'dotenv';
 
@@ -15,7 +16,7 @@ const pool = new Pool({
 const test = async () => {
   try {
     console.log('⏳ Querying database...');
-    const result = await pool.query('SELECT * FROM users');
+    const result = await pool.query('SELECT * FROM public."Users"');
     console.log('✅ RESULT:', result.rows);
   } catch (err) {
     console.error('❌ ERROR:', err.message);
