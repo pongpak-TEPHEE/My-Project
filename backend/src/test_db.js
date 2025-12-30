@@ -16,6 +16,7 @@ const pool = new Pool({
 const test = async () => {
   try {
     console.log('⏳ Querying database...');
+    // Name of table use "Users" only 
     const result = await pool.query('SELECT * FROM public."Users"');
     console.log('✅ RESULT:', result.rows);
   } catch (err) {
