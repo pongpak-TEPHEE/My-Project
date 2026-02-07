@@ -15,6 +15,7 @@ app.use(cors({
     credentials: true // อนุญาตให้ส่ง Token/Cookie มาได้
 }));
 
+
 const globalLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 นาที
   max: 100, // อนุญาตให้ยิง API ได้ 100 ครั้งต่อนาที (ต่อ IP)
@@ -26,7 +27,14 @@ app.set('trust proxy', 1);
 app.use(globalLimiter);
 app.use(express.json());
 
-
+app.use((err, req, res, next) => {
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({
+    status: 'error',
+    message: err.message || "Someting is wrong. ⚠️⚠️⚠️⚠️", 
+    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack // ซ่อน stack trace
+  });
+});
 
 // All of routes 
 import authRoutes from './routes/auth.routes.js';           // requestOTP, verifyOTP, register

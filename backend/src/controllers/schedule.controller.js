@@ -1,6 +1,5 @@
 import { pool } from '../config/db.js';
-import xlsx from 'xlsx';
-import fs from 'fs';
+import ExcelJS from 'exceljs';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelTime = (value) => {
@@ -24,83 +23,119 @@ const formatExcelTime = (value) => {
   return String(value).trim();
 };
 
+
 export const importClassSchedules = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'กรุณาอัปโหลดไฟล์ Excel' });
     }
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
+    // ---------------------------------------------------------
+    // 🟢 ส่วนที่ปรับแก้: ใช้ ExcelJS อ่าน Buffer
+    // ---------------------------------------------------------
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    
+    // ดึง Sheet แรก (ExcelJS เริ่มนับ Sheet ที่ 1)
+    const worksheet = workbook.getWorksheet(1);
+    
+    if (!worksheet) {
+       return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
+    }
 
-    const data = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+    // แปลงข้อมูลใน Sheet ให้เป็น Array of Objects (เลียนแบบ sheet_to_json)
+    const importedData = [];
+    let headers = {};
 
-    console.log(`📥 กำลังนำเข้าตารางเรียน ${date.length} รายการ`);
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        // แถวที่ 1: เก็บ Header (key) เช่น room_id, subject_name
+        row.eachCell((cell, colNumber) => {
+          headers[colNumber] = cell.value; 
+        });
+      } else {
+        // แถวที่ 2+: เก็บข้อมูล
+        let rowData = {};
+        row.eachCell((cell, colNumber) => {
+          const key = headers[colNumber];
+          // ดึงค่า value (exceljs บางที return เป็น object ถ้าเป็นสูตร/link)
+          let cellValue = cell.value;
+          
+          // ตรวจสอบว่าเป็น Object หรือ Text ธรรมดา (กรณีมี Hyperlink หรือ RichText)
+          if (typeof cellValue === 'object' && cellValue !== null) {
+             if (cellValue.text) cellValue = cellValue.text;
+             else if (cellValue.result) cellValue = cellValue.result;
+          }
+          
+          if (key) {
+             rowData[key] = cellValue;
+          }
+        });
+        importedData.push(rowData);
+      }
+    });
+
+    console.log(`📥 กำลังนำเข้าตารางเรียน ${importedData.length} รายการ`);
 
     // ---------------------------------------------------------
-    // 🟡 STEP 1: หา ID ล่าสุดใน DB ก่อน เพื่อจะนับต่อ
+    // 🟡 STEP 1: หา ID ล่าสุดใน DB
     // ---------------------------------------------------------
     let currentIdNum = 0;
 
-    // Query เพื่อหา schedule_id ตัวที่มากที่สุด (Sort DESC แล้วเอาตัวแรก)
     const lastIdResult = await pool.query(
       `SELECT schedule_id FROM public."Schedules" 
        ORDER BY schedule_id DESC LIMIT 1`
     );
 
     if (lastIdResult.rows.length > 0) {
-      const lastId = lastIdResult.rows[0].schedule_id; // เช่น "schedule005"
-      // ตัดคำว่า "schedule" ออก เหลือแค่ตัวเลข แล้วแปลงเป็น Int
+      const lastId = lastIdResult.rows[0].schedule_id;
       const numPart = lastId.replace('schedule', ''); 
       currentIdNum = parseInt(numPart, 10); 
-      
-      // กันเหนียว: กรณี parse ไม่ได้ ให้เริ่มที่ 0
       if (isNaN(currentIdNum)) currentIdNum = 0;
     }
 
-    console.log(`🔢 ID ล่าสุดในระบบคือ: schedule${String(currentIdNum).padStart(3, '0')}, เริ่มรันต่อที่เลขถัดไป...`);
+    console.log(`🔢 ID ล่าสุดคือ: schedule${String(currentIdNum).padStart(3, '0')}, เริ่มรันต่อ...`);
 
     // ---------------------------------------------------------
-    
+    // 🟡 STEP 2: วนลูปบันทึกข้อมูล
+    // ---------------------------------------------------------
     let successCount = 0;
     const errors = [];
 
-    for (const [index, row] of date.entries()) {
+    // เปลี่ยนตัวแปรจาก date เป็น importedData เพื่อไม่ให้สับสนกับตัวแปรวันที่
+    for (const [index, row] of importedData.entries()) {
       try {
         const roomId = row.room_id ? String(row.room_id).trim() : null;
         const subjectName = row.subject_name ? String(row.subject_name).trim() : "";
         const teacherName = row.teacher_name ? String(row.teacher_name).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
         
-        const startTime = formatExcelTime(row.start_time); 
-        const endTime = formatExcelTime(row.end_time);
-        const date = formatExcelTime(row.date);
+        // ฟังก์ชันจัดการวันที่ (ExcelJS มักจะส่งมาเป็น Date Object อยู่แล้ว ถ้า Format ใน Excel ถูก)
+        const startTime = parseExcelDate(row.start_time, 'time'); 
+        const endTime = parseExcelDate(row.end_time, 'time');
+        const scheduleDate = parseExcelDate(row.date, 'date'); // เปลี่ยนชื่อตัวแปรไม่ให้ซ้ำ
 
-        // console.log("semesterID = ", semesterId);
-        if (!roomId || !semesterId ) {
-           throw new Error('ข้อมูลไม่ครบ (ต้องมี room_id, semester_id');
+        if (!roomId || !semesterId) {
+           throw new Error('ข้อมูลไม่ครบ (ต้องมี room_id, semester_id)');
         }
 
-        // 🟡 STEP 2: สร้าง ID ใหม่ (Generate New ID)
-        currentIdNum++; // บวกเลขเพิ่ม 1
-        // แปลงเป็น String และเติม 0 ข้างหน้าให้ครบ 3 หลัก (001, 010, 100)
+        // Generate ID
+        currentIdNum++;
         const nextScheduleId = `schedule${String(currentIdNum).padStart(3, '0')}`;
 
         await pool.query(
           `INSERT INTO public."Schedules" 
-           (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, data)
+           (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
-            nextScheduleId, // $1: ใส่ ID ที่เราสร้างเอง
-            roomId,         // $2
-            subjectName,    // $3
-            teacherName,    // $4
-            startTime,      // $5
-            endTime,        // $6
-            semesterId,     // $7
-            date            // $8
-            
+            nextScheduleId, 
+            roomId,        
+            subjectName,    
+            teacherName,    
+            startTime,      
+            endTime,        
+            semesterId,     
+            scheduleDate    
           ]
         );
         successCount++;
@@ -113,7 +148,7 @@ export const importClassSchedules = async (req, res) => {
 
     res.json({
       message: 'Import ตารางเรียนเรียบร้อยแล้ว',
-      total: date.length,
+      total: importedData.length,
       success: successCount,
       failed: errors.length,
       errors: errors.length > 0 ? errors : undefined
@@ -124,6 +159,31 @@ export const importClassSchedules = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' });
   }
 };
+
+// ---------------------------------------------------------
+// 🛠 Helper Function: จัดการเรื่องวันที่และเวลา
+// ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้
+// ---------------------------------------------------------
+function parseExcelDate(value, type = 'date') {
+    if (!value) return null;
+
+    // กรณี 1: ExcelJS ส่งมาเป็น Date Object อยู่แล้ว (ดีที่สุด)
+    if (value instanceof Date) {
+        if (type === 'time') {
+            // ดึงเฉพาะเวลา HH:mm:ss
+            return value.toTimeString().split(' ')[0];
+        } else {
+            // ดึงเฉพาะวันที่ YYYY-MM-DD (แก้เรื่อง Timezone Offset เบื้องต้น)
+            const year = value.getFullYear();
+            const month = String(value.getMonth() + 1).padStart(2, '0');
+            const day = String(value.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+    }
+
+    // กรณี 2: เป็น String (เช่น "10:30" หรือ "2023-12-01")
+    return String(value).trim();
+}
 
 export const getSchedule = async (req, res) => {
   try {

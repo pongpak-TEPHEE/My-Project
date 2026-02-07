@@ -152,7 +152,7 @@ export const getRoomStatus = async (req, res) => {
   }
 };
 
-// สร้างการจองห้องขึ้น 
+// สร้างการจองห้องสำหรับ อาจารย์
 export const createBookingForTeacher = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
@@ -246,6 +246,7 @@ export const createBookingForTeacher = async (req, res) => {
   }
 };
 
+// สร้างการจองห้องสำหรับ staff
 export const createBookingForStaff = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
