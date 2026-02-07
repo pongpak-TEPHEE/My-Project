@@ -1,0 +1,21 @@
+# ไฟล์ .gitignore
+
+# 1. สำคัญที่สุด! ความลับห้ามหลุด
+.env
+.env.local
+.env.*.local
+
+# 2. โฟลเดอร์ Library (หนักมาก ไม่ควรเอาขึ้น)
+node_modules/
+
+# 3. ไฟล์ขยะของ System (User ใช้ Mac มักจะเจอตัวนี้)
+.DS_Store
+
+# 4. ไฟล์ Log ต่างๆ
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 5. โฟลเดอร์ Build (React build เสร็จจะได้พวกนี้มา)
+build/
+dist/
