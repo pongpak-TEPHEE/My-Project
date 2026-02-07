@@ -12,6 +12,7 @@ export const requestOTP = async (req, res) => {
     return res.status(400).json({ message: 'อนุญาตให้ใช้งานเฉพาะอีเมล @ku.th เท่านั้น' });
   }
 
+
   // 2. สร้าง OTP 6 หลัก
   const otp = crypto.randomInt(100000, 1000000).toString();
 
@@ -33,9 +34,8 @@ export const requestOTP = async (req, res) => {
       [requestId, email, otp, expiresAt]
     );
 
-    // -----------------------------------------------------
-    // ✅ 7. ส่งอีเมลจริงๆ (จุดที่แก้ไข)
-    // -----------------------------------------------------
+
+    // 7. ส่งอีเมลจริงๆ (จุดที่แก้ไข)
     const isSent = await sendOTPEmail(email, otp);
 
     if (!isSent) {

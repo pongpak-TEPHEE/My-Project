@@ -7,7 +7,9 @@ const app = express();
 app.use(helmet()); // ปิดบัง Server Info และกัน XSS เบื้องต้น
 
 app.use(cors({
-    origin: "*", // '*' :  อนุญาตให้ทุกคนเข้าถึงได้ (เหมาะสำหรับช่วง Dev/Test/ngrok)
+  // ⚠️⚠️⚠️⚠️⚠️⚠️ เราต้องตั้งค่าให้แค่ frontend เท่านั้นที่จะสามมารถ ⚠️⚠️⚠️⚠️⚠️⚠️
+  
+    origin: "*", // '*' :  อนุญาตให้ทุกคนเข้าถึงได้ (เหมาะสำหรับช่วง Dev/Test/ngrok)  
     methods: ['GET', 'POST', 'PUT', 'DELETE'], // อนุญาต Method อะไรบ้าง
     allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'], // อนุญาต Header อะไรบ้าง (สำคัญสำหรับ Token)
     credentials: true // อนุญาตให้ส่ง Token/Cookie มาได้
