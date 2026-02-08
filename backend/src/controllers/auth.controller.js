@@ -92,7 +92,7 @@ export const verifyOTP = async (req, res) => {
     // (แก้ไขชื่อ key ให้เป็น 'user_id' เพื่อให้ตรงกับ Middleware)
     const token = jwt.sign(
       { 
-        user_id: user.user_id, // 👈 แก้จาก userId เป็น user_id
+        user_id: user.user_id,
         role: user.role,
         name: user.name // แถมชื่อไปด้วย Frontend จะได้ใช้ง่ายๆ
       },
@@ -132,6 +132,8 @@ export const register = async (req, res) => {
 
   const { email, otp_code, name, surname} = req.body; 
   // *หมายเหตุ: ในระบบเราไม่ได้เก็บข้อมูล nisit_id Ex. b6630200403
+
+  
 
   try {
     // 1. ตรวจ OTP (เหมือนเดิม)

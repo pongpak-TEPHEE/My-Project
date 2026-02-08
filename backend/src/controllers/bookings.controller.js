@@ -161,7 +161,6 @@ export const createBookingForTeacher = async (req, res) => {
   try {
 
     // 0. ดักการจองย้อนหลัง
-
     const now = new Date();
     const bookingStart = new Date(`${date}T${start_time}`);
 

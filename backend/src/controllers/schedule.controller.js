@@ -2,24 +2,45 @@ import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
-const formatExcelTime = (value) => {
+const formatExcelData = (value, type = 'time') => {
   if (!value) return null;
-  
-  // 1. ถ้ามาเป็นตัวเลขทศนิยม (เช่น 0.375)
-  if (typeof value === 'number') {
-    // Excel เก็บเวลาเป็นสัดส่วนของวัน (1 วัน = 24 ชม.)
-    // สูตร: ค่า * 24 * 60 * 60 = จำนวนวินาทีทั้งหมด
+
+  // 🟢 กรณี 1: ExcelJS อ่านมาเป็น Date Object
+  if (value instanceof Date) {
+    // แก้ไข: ใช้ getUTC...() แทน get...() 
+    // เพื่อดึงค่าเวลาดิบๆ โดยไม่สน Timezone ของประเทศไทยในปี 1899
+    
+    if (type === 'time') {
+      // ใช้ UTC เพื่อให้ได้ 09:00 ตาม Excel เป๊ะๆ
+      const hours = String(value.getUTCHours()).padStart(2, '0');
+      const minutes = String(value.getUTCMinutes()).padStart(2, '0');
+      const seconds = String(value.getUTCSeconds()).padStart(2, '0');
+      return `${hours}:${minutes}:${seconds}`; 
+    } else {
+      // type === 'date'
+      // สำหรับวันที่ ก็ควรใช้ UTC เช่นกันเพื่อความชัวร์ ถ้า Excel เก็บเป็น UTC
+      const year = value.getUTCFullYear();
+      const month = String(value.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(value.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // 🟡 กรณี 2: มาเป็นตัวเลขทศนิยม (Logic เดิม)
+  if (typeof value === 'number' && type === 'time') {
+    // ปัดเศษวินาทีเพื่อความแม่นยำ (กันกรณี 09:00 กลายเป็น 08:59:59.999)
     const totalSeconds = Math.round(value * 24 * 60 * 60);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
     
-    // จัดรูปแบบให้เป็น "HH:MM" (เติม 0 ข้างหน้าถ้าหลักเดียว)
     const hh = String(hours).padStart(2, '0');
     const mm = String(minutes).padStart(2, '0');
-    return `${hh}:${mm}`;
+    const ss = String(seconds).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
   }
-  
-  // 2. ถ้ามาเป็น String อยู่แล้ว (เช่น "09:00") ก็ส่งกลับไปได้เลย
+
+  // 🔴 กรณี 3: มาเป็น String
   return String(value).trim();
 };
 
@@ -111,9 +132,9 @@ export const importClassSchedules = async (req, res) => {
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
         
         // ฟังก์ชันจัดการวันที่ (ExcelJS มักจะส่งมาเป็น Date Object อยู่แล้ว ถ้า Format ใน Excel ถูก)
-        const startTime = parseExcelDate(row.start_time, 'time'); 
-        const endTime = parseExcelDate(row.end_time, 'time');
-        const scheduleDate = parseExcelDate(row.date, 'date'); // เปลี่ยนชื่อตัวแปรไม่ให้ซ้ำ
+        const startTime = formatExcelData(row.start_time, 'time'); 
+        const endTime = formatExcelData(row.end_time, 'time');
+        const scheduleDate = formatExcelData(row.date, 'date'); // เปลี่ยนชื่อตัวแปรไม่ให้ซ้ำ
 
         if (!roomId || !semesterId) {
            throw new Error('ข้อมูลไม่ครบ (ต้องมี room_id, semester_id)');
@@ -160,10 +181,9 @@ export const importClassSchedules = async (req, res) => {
   }
 };
 
-// ---------------------------------------------------------
+
 // 🛠 Helper Function: จัดการเรื่องวันที่และเวลา
 // ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้
-// ---------------------------------------------------------
 function parseExcelDate(value, type = 'date') {
     if (!value) return null;
 

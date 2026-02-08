@@ -148,9 +148,7 @@ export const createRoom = async (req, res) => {
   try {
     await client.query('BEGIN'); // 🔴 เริ่มต้น Transaction
 
-    // ---------------------------------------------------------
     // STEP 1: Insert ลงตาราง Rooms
-    // ---------------------------------------------------------
     await client.query(
       `INSERT INTO public."Rooms" 
        (room_id, room_type, location, capacity, room_characteristics)
@@ -199,7 +197,7 @@ export const createRoom = async (req, res) => {
   }
 };
 
-// ✅ ฟังก์ชันสร้าง QR Code ของห้อง
+// ฟังก์ชันสร้าง QR Code ของห้อง
 export const getRoomQRCode = async (req, res) => {
   const { id } = req.params; // รับ room_id เช่น 26504
 
