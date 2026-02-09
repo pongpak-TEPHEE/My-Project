@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// ✅ 1. ประกาศ transporter ไว้ข้างบนสุด (เพื่อให้ทุกฟังก์ชันเรียกใช้ได้)
+// 1. ประกาศ transporter ไว้ข้างบนสุด (เพื่อให้ทุกฟังก์ชันเรียกใช้ได้)
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// ✅ 2. ฟังก์ชันส่ง OTP (สำหรับตอน Login/Register)
+// 2. ฟังก์ชันส่ง OTP (สำหรับตอน Login/Register)
 export const sendOTPEmail = async (toEmail, otpCode) => {
   const mailOptions = {
     from: `"Nisit Booking System" <${process.env.EMAIL_USER}>`,
@@ -37,7 +37,7 @@ export const sendOTPEmail = async (toEmail, otpCode) => {
   }
 };
 
-// ✅ 3. ฟังก์ชันส่งเมลแจ้งผลการจอง (สำหรับ Staff กดอนุมัติ)
+// 3. ฟังก์ชันส่งเมลแจ้งผลการจอง (สำหรับ Staff กดอนุมัติ)
 export const sendBookingStatusEmail = async (toEmail, bookingDetails) => {
   // รับค่า transporter มาใช้ได้เลย เพราะประกาศไว้ข้างบนแล้ว
   const { status, room_name, date, start_time, end_time, reject_reason } = bookingDetails;

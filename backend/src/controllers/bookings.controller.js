@@ -33,7 +33,7 @@ export const getPendingBookings = async (req, res) => {
   }
 };
 
-// ดึงรายการที่ rejected 
+// ดึงรายการที่ "ถูกปฏิเสธ"
 export const getRejectedBookings = async (req, res) => {
   try {
     const result = await pool.query(
@@ -93,6 +93,7 @@ export const getApprovedBookings = async (req, res) => {
   }
 };
 
+// ใช้เมื่อสแกร QR code ห้องระบบ frontend จะส่ง room_id มาตรวจสอบหลังบ้านว่าห้องนี้เวลานี้ห้องว่างไหม ณ ขณะ ที่เราแสกน
 export const getRoomStatus = async (req, res) => {
   const { id } = req.params; // นี่คือ room_id (เช่น 26504)
 
@@ -152,7 +153,7 @@ export const getRoomStatus = async (req, res) => {
   }
 };
 
-// สร้างการจองห้องสำหรับ อาจารย์
+// สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
@@ -245,12 +246,12 @@ export const createBookingForTeacher = async (req, res) => {
   }
 };
 
-// สร้างการจองห้องสำหรับ staff
+// สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForStaff = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
   const teacher_id = req.user.user_id; 
-  console.log("teacher id : ", teacher_id);
+  // console.log("teacher id : ", teacher_id);
 
   try {
 
@@ -319,13 +320,16 @@ export const createBookingForStaff = async (req, res) => {
 
     console.log(`new booking id = ${newBookingId}`);
 
+    const name = req.user.name;
+    console.log("name : ", name);
+
 
     // 3. บันทึกข้อมูล (ใช้ newBookingId ที่เราคำนวณมา)
     await pool.query(
       `INSERT INTO public."Booking" 
-       (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved')`,
-      [newBookingId, room_id, teacher_id, purpose, date, start_time, end_time]
+       (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status, approved_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8)`,
+      [newBookingId, room_id, teacher_id, purpose, date, start_time, end_time, req.user.user_id]
     );
 
     // 4. ส่ง response กลับ
@@ -340,10 +344,11 @@ export const createBookingForStaff = async (req, res) => {
   }
 };
 
-// อัปเดตสถานะการจอง (Approve / Reject) for staff
+// อัปเดตสถานะการจอง (Approve / Reject) for role staff only !!!!!!
 export const updateBookingStatus = async (req, res) => {
-  const { id } = req.params; 
-  const { status } = req.body; 
+  const { id } = req.params;
+  const { status } = req.body;
+
 
   if (!['approved', 'rejected', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
@@ -353,11 +358,20 @@ export const updateBookingStatus = async (req, res) => {
     // 1. อัปเดตสถานะลง DB
     const updateResult = await pool.query(
       `UPDATE public."Booking" 
-       SET status = $1 
+       SET status = $1
        WHERE booking_id = $2 
        RETURNING *`, 
       [status, id]
     );
+    
+    await pool.query(
+      `UPDATE public."Booking" 
+       SET approved_by = $1
+       WHERE booking_id = $2 
+       RETURNING *`, 
+      [req.user.user_id, id]
+    );
+
 
     if (updateResult.rowCount === 0) {
       return res.status(404).json({ message: 'ไม่พบรายการจองนี้' });
@@ -400,7 +414,7 @@ export const updateBookingStatus = async (req, res) => {
   }
 };
 
-// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ อณุมัติ แล้วในห้องใดๆตาม parameter ที่ส่งมาเพื่อจะเอาข้อมูลไปใส่ตาราง
+// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา
 export const getAllBooking =  async (req, res) => {
     const { roomId } = req.params;
     const { status } = req.query;
@@ -428,7 +442,7 @@ export const getAllBooking =  async (req, res) => {
     }
 };
 
-// ดึงรายการที่เราเคยจอง
+// ดึงรายการที่เราเคยจอง เช่น ผมนาย A มี userId = 001 : จองห้องอะไรบ้างก็ดึงมาทั้งหมด
 export const getMyBookings = async (req, res) => {
   const teacher_id = req.user.userId; // ดึง ID จาก Token (Middleware แกะมาให้แล้ว)
 

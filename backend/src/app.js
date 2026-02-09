@@ -18,7 +18,7 @@ app.use(cors({
 
 const globalLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 นาที
-  max: 100, // อนุญาตให้ยิง API ได้ 100 ครั้งต่อนาที (ต่อ IP)
+  max: 60, // อนุญาตให้ยิง API ได้ 100 ครั้งต่อนาที (ต่อ IP)
   message: { message: 'Too many requests, please try again later.' }
 });
 

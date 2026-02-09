@@ -40,14 +40,13 @@ router.get('/:id', authenticateToken, getRoomStatus)
 
 router.get('/allBooking/:roomId', getAllBooking);
 
-// ✅ 1. API ดูประวัติการจองของฉัน
+// API ดูประวัติการจองของฉัน
 // GET http://localhost:3000/bookings/my-history
 // ⚠️ ต้องวางไว้ "ก่อน" /:id นะครับ ไม่งั้นมันจะนึกว่า "my-history" คือ id
 router.get('/my-history', authenticateToken, getMyBookings);
 
-// ✅ 2. API ยกเลิกการจอง
+// API ยกเลิกการจอง
 // PUT http://localhost:3000/bookings/15/cancel
 router.put('/:id/cancel', authenticateToken, cancelBooking);
-
 
 export default router;

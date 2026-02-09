@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken'; // โมดูลสำหรับสร้า
 import crypto from 'crypto'; // โมดูลสำหรับสร้างตัวเลขสุ่มและ UUID ของ Node.js
 import { sendOTPEmail } from '../services/mailer.js';
 
-
+// ขอ OTP ส่งไปยัง email.ku.th
 export const requestOTP = async (req, res) => {
   const { email } = req.body;
 
@@ -12,17 +12,40 @@ export const requestOTP = async (req, res) => {
     return res.status(400).json({ message: 'อนุญาตให้ใช้งานเฉพาะอีเมล @ku.th เท่านั้น' });
   }
 
-
-  // 2. สร้าง OTP 6 หลัก
-  const otp = crypto.randomInt(100000, 1000000).toString();
-
-  // 3. กำหนดเวลาหมดอายุ (5 นาที จะดีกว่า 1 นาทีสำหรับการส่งเมลจริง เผื่อ delay)
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); 
-
-  // 4. สร้าง Request ID
-  const requestId = crypto.randomUUID();
-
   try {
+    // -----------------------------------------------------
+    // 🛑 STEP 1: เช็คก่อนว่าเพิ่งขอไปหรือเปล่า (Cooldown)
+    // -----------------------------------------------------
+    const lastOtpCheck = await pool.query(
+      `SELECT created_at FROM public."OTP" 
+       WHERE email = $1 
+       ORDER BY created_at DESC LIMIT 1`, // ดูอันล่าสุด
+      [email]
+    );
+
+    if (lastOtpCheck.rows.length > 0) {
+      const lastRequest = new Date(lastOtpCheck.rows[0].created_at);
+      const now = new Date();
+      
+      // คำนวณความต่างเวลา (หน่วยวินาที)
+      const diffSeconds = (now - lastRequest) / 1000;
+
+      // ถ้าเพิ่งขอไปไม่ถึง 20 วินาที (1 นาที) ให้ไล่กลับไป
+      if (diffSeconds < 20) {
+        return res.status(429).json({ 
+          message: `กรุณารออีก ${Math.ceil(60 - diffSeconds)} วินาที ก่อนขอรหัสใหม่` 
+        });
+      }
+    }
+      // 2. สร้าง OTP 6 หลัก
+    const otp = crypto.randomInt(100000, 1000000).toString();
+
+    // 3. กำหนดเวลาหมดอายุ (5 นาที จะดีกว่า 1 นาทีสำหรับการส่งเมลจริง เผื่อ delay)
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); 
+
+    // 4. สร้าง Request ID
+    const requestId = crypto.randomUUID();
+
     // 5. ลบ OTP เก่าของ Email นี้ทิ้งก่อน (Cleanup)
     await pool.query(`DELETE FROM public."OTP" WHERE email = $1`, [email]);
 
@@ -34,8 +57,7 @@ export const requestOTP = async (req, res) => {
       [requestId, email, otp, expiresAt]
     );
 
-
-    // 7. ส่งอีเมลจริงๆ (จุดที่แก้ไข)
+    // 7. ส่งอีเมล
     const isSent = await sendOTPEmail(email, otp);
 
     if (!isSent) {
@@ -50,14 +72,13 @@ export const requestOTP = async (req, res) => {
         message: `ส่งรหัส OTP ไปที่ ${email} เรียบร้อยแล้ว`, 
         requestId: requestId 
     });
-
   } catch (error) {
     console.error('Request OTP Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์' });
   }
 };
 
-
+// รับ OTP ที่ USER กรอกมาเพื่อ recheck กับ database
 export const verifyOTP = async (req, res) => {
   const { email, otp_code } = req.body;
   
@@ -127,13 +148,11 @@ export const verifyOTP = async (req, res) => {
   }
 };
 
-
+// ยังไม่เรียกใช้ !!!!
 export const register = async (req, res) => {
 
   const { email, otp_code, name, surname} = req.body; 
   // *หมายเหตุ: ในระบบเราไม่ได้เก็บข้อมูล nisit_id Ex. b6630200403
-
-  
 
   try {
     // 1. ตรวจ OTP (เหมือนเดิม)
@@ -216,7 +235,7 @@ export const register = async (req, res) => {
   }
 };
 
-
+// เป็นการลบ token ของผู้ใช้ออก
 export const logout = async (req, res) => {
   try {
     // 1. ดึง Token จาก Header
