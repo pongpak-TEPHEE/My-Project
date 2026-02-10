@@ -90,7 +90,6 @@ export const importClassSchedules = async (req, res) => {
 
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) {
-        // แถวที่ 1: เก็บ Header (key) เช่น room_id, subject_name
         row.eachCell((cell, colNumber) => {
           headers[colNumber] = cell.value; 
         });
@@ -194,6 +193,83 @@ export const importClassSchedules = async (req, res) => {
   } catch (error) {
     console.error('Import Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' });
+  }
+};
+
+
+const insertScheduleToDB = async (client, data, currentIdNum) => {
+  // Generate ID ใหม่ (รับค่าตัวเลขล่าสุดมา + 1)
+  const nextIdNum = currentIdNum + 1;
+  const nextScheduleId = `schedule${String(nextIdNum).padStart(3, '0')}`;
+
+  await client.query(
+    `INSERT INTO public."Schedules" 
+     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      nextScheduleId,
+      data.room_id,
+      data.subject_name,
+      data.teacher_name,
+      data.start_time,
+      data.end_time,
+      data.semester_id,
+      data.date
+    ]
+  );
+
+  return nextIdNum; // ส่งค่าตัวเลขล่าสุดกลับไป เพื่อให้รอบต่อไปนับต่อได้
+};
+
+export const confirmSchedules = async (req, res) => {
+  // รับข้อมูลเป็น Array จาก Frontend
+  // body: { schedules: [ { room_id: '...', ... }, { ... } ] }
+  const { schedules } = req.body;
+
+  if (!schedules || schedules.length === 0) {
+    return res.status(400).json({ message: 'ไม่มีข้อมูลที่จะบันทึก' });
+  }
+
+  const client = await pool.connect(); // ใช้ Client เพื่อทำ Transaction (ปลอดภัยกว่า)
+
+  try {
+    await client.query('BEGIN'); // เริ่ม Transaction (ถ้าพัง ให้ยกเลิกทั้งหมด)
+
+    // 1. หา ID ล่าสุดใน DB ก่อน
+    let currentIdNum = 0;
+    const lastIdResult = await client.query(
+      `SELECT schedule_id FROM public."Schedules" ORDER BY schedule_id DESC LIMIT 1`
+    );
+
+    if (lastIdResult.rows.length > 0) {
+      const lastId = lastIdResult.rows[0].schedule_id;
+      const numPart = lastId.replace('schedule', '');
+      currentIdNum = parseInt(numPart, 10);
+      if (isNaN(currentIdNum)) currentIdNum = 0;
+    }
+
+    console.log(`💾 กำลังบันทึก ${schedules.length} รายการ... เริ่มต้นที่ ID: ${currentIdNum}`);
+
+    // 2. วนลูปบันทึกข้อมูลทีละแถว
+    for (const schedule of schedules) {
+      // เรียกใช้ฟังก์ชัน insert ที่เราแยกไว้
+      // และอัปเดต currentIdNum ไปเรื่อยๆ
+      currentIdNum = await insertScheduleToDB(client, schedule, currentIdNum);
+    }
+
+    await client.query('COMMIT'); // ✅ บันทึกจริงเมื่อทำครบทุกรายการ
+    
+    res.json({ 
+      message: 'บันทึกข้อมูลทั้งหมดสำเร็จ', 
+      totalSaved: schedules.length 
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK'); // ❌ ถ้ารายการไหนพัง ให้ยกเลิกทั้งหมด!
+    console.error('Save Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล', error: error.message });
+  } finally {
+    client.release(); // คืน Connection
   }
 };
 
