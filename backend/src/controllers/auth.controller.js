@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken'; // โมดูลสำหรับสร้า
 import crypto from 'crypto'; // โมดูลสำหรับสร้างตัวเลขสุ่มและ UUID ของ Node.js
 import { sendOTPEmail } from '../services/mailer.js';
 
+
+// /auth/request-otp
 // ขอ OTP ส่งไปยัง email.ku.th
 export const requestOTP = async (req, res) => {
   const { email } = req.body;
@@ -78,6 +80,7 @@ export const requestOTP = async (req, res) => {
   }
 };
 
+// /auth/verify-otp
 // รับ OTP ที่ USER กรอกมาเพื่อ recheck กับ database
 export const verifyOTP = async (req, res) => {
   const { email, otp_code } = req.body;
@@ -148,6 +151,7 @@ export const verifyOTP = async (req, res) => {
   }
 };
 
+// /auth/register
 // ยังไม่เรียกใช้ !!!!
 export const register = async (req, res) => {
 
@@ -235,6 +239,7 @@ export const register = async (req, res) => {
   }
 };
 
+// /auth/logout
 // เป็นการลบ token ของผู้ใช้ออก
 export const logout = async (req, res) => {
   try {

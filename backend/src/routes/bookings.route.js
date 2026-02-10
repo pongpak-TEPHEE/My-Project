@@ -36,6 +36,7 @@ router.get('/rejected', authenticateToken, authorizeRole('teacher', 'staff'), ge
 // :id คือตัวแปรที่จะรับ booking_id (เช่น /bookings/b123/status)
 router.put('/:id/status', authenticateToken, authorizeRole('staff'), updateBookingStatus);
 
+
 router.get('/:id', authenticateToken, getRoomStatus)
 
 router.get('/allBooking/:roomId', getAllBooking);

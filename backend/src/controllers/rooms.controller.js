@@ -1,6 +1,8 @@
 import { pool } from '../config/db.js';
 import QRCode from 'qrcode';
 
+
+// /rooms/:room_id/schedule
 // ดึงตารางการใช้ห้อง "เฉพาะวันนี้" (สำหรับหน้า QR Code)
 export const getRoomScheduleToday = async (req, res) => {
   const { room_id } = req.params;
@@ -60,6 +62,7 @@ export const getRoomScheduleToday = async (req, res) => {
   }
 };
 
+// /rooms/
 // ดึงรายชื่อห้องทั้งหมด (สำหรับแสดงในหน้าเลือกห้อง)
 export const getAllRooms = async (req, res) => {
   try {
@@ -77,6 +80,8 @@ export const getAllRooms = async (req, res) => {
   }
 };
 
+// /rooms/:id
+// ดึงรายระเอียดของห้องที่เราเลือก เช่น รายละเอียดของห้อง 26504
 export const getRoomDetail = async (req, res) => {
   const { id } = req.params; // รับค่า room_id (เช่น 26504)
 
@@ -130,6 +135,8 @@ export const getRoomDetail = async (req, res) => {
   }
 };
 
+// (POST) /rooms/
+// เพิ่มห้องใหม่
 export const createRoom = async (req, res) => {
   // รับค่าทั้งหมดจาก Body ทั้งข้อมูลห้อง และ ข้อมูลอุปกรณ์
   const { 
@@ -156,9 +163,8 @@ export const createRoom = async (req, res) => {
       [room_id, room_type, location, capacity, room_characteristics]
     );
 
-    // ---------------------------------------------------------
+
     // STEP 2: Insert ลงตาราง Equipments (ถ้ามีข้อมูลส่งมา)
-    // ---------------------------------------------------------
     if (equipments) {
       // สร้าง equipment_id อัตโนมัติ (เช่น eq-26504) เพื่อให้ง่ายและไม่ซ้ำ
       // หรือถ้าอยากรับจาก body ก็ใช้ req.body.equipment_id ได้ครับ
@@ -197,6 +203,7 @@ export const createRoom = async (req, res) => {
   }
 };
 
+// /rooms/:id/qrcode
 // ฟังก์ชันสร้าง QR Code ของห้อง
 export const getRoomQRCode = async (req, res) => {
   const { id } = req.params; // รับ room_id เช่น 26504

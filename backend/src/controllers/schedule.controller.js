@@ -44,16 +44,36 @@ const formatExcelData = (value, type = 'time') => {
   return String(value).trim();
 };
 
+// 🛠 Helper Function: จัดการเรื่องวันที่และเวลา, ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้
+function parseExcelDate(value, type = 'date') {
+    if (!value) return null;
 
+    // กรณี 1: ExcelJS ส่งมาเป็น Date Object อยู่แล้ว (ดีที่สุด)
+    if (value instanceof Date) {
+        if (type === 'time') {
+            // ดึงเฉพาะเวลา HH:mm:ss
+            return value.toTimeString().split(' ')[0];
+        } else {
+            // ดึงเฉพาะวันที่ YYYY-MM-DD (แก้เรื่อง Timezone Offset เบื้องต้น)
+            const year = value.getFullYear();
+            const month = String(value.getMonth() + 1).padStart(2, '0');
+            const day = String(value.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+    }
+
+    // กรณี 2: เป็น String (เช่น "10:30" หรือ "2023-12-01")
+    return String(value).trim();
+}
+
+// /schedule/import 
+// อัพโหลดข้อมูล file และอ่านไฟล์เพื่อนำไปใส่ใน database
 export const importClassSchedules = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'กรุณาอัปโหลดไฟล์ Excel' });
     }
 
-    // ---------------------------------------------------------
-    // 🟢 ส่วนที่ปรับแก้: ใช้ ExcelJS อ่าน Buffer
-    // ---------------------------------------------------------
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
     
@@ -98,9 +118,7 @@ export const importClassSchedules = async (req, res) => {
 
     console.log(`📥 กำลังนำเข้าตารางเรียน ${importedData.length} รายการ`);
 
-    // ---------------------------------------------------------
-    // 🟡 STEP 1: หา ID ล่าสุดใน DB
-    // ---------------------------------------------------------
+    // STEP 1: หา ID ล่าสุดใน DB
     let currentIdNum = 0;
 
     const lastIdResult = await pool.query(
@@ -117,9 +135,7 @@ export const importClassSchedules = async (req, res) => {
 
     console.log(`🔢 ID ล่าสุดคือ: schedule${String(currentIdNum).padStart(3, '0')}, เริ่มรันต่อ...`);
 
-    // ---------------------------------------------------------
-    // 🟡 STEP 2: วนลูปบันทึกข้อมูล
-    // ---------------------------------------------------------
+    // STEP 2: วนลูปบันทึกข้อมูล
     let successCount = 0;
     const errors = [];
 
@@ -181,30 +197,8 @@ export const importClassSchedules = async (req, res) => {
   }
 };
 
-
-// 🛠 Helper Function: จัดการเรื่องวันที่และเวลา
-// ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้
-function parseExcelDate(value, type = 'date') {
-    if (!value) return null;
-
-    // กรณี 1: ExcelJS ส่งมาเป็น Date Object อยู่แล้ว (ดีที่สุด)
-    if (value instanceof Date) {
-        if (type === 'time') {
-            // ดึงเฉพาะเวลา HH:mm:ss
-            return value.toTimeString().split(' ')[0];
-        } else {
-            // ดึงเฉพาะวันที่ YYYY-MM-DD (แก้เรื่อง Timezone Offset เบื้องต้น)
-            const year = value.getFullYear();
-            const month = String(value.getMonth() + 1).padStart(2, '0');
-            const day = String(value.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        }
-    }
-
-    // กรณี 2: เป็น String (เช่น "10:30" หรือ "2023-12-01")
-    return String(value).trim();
-}
-
+// /schedule/:room_id
+// ดึงรายการการจองห้องที่มาจาก Excel table
 export const getSchedule = async (req, res) => {
   try {
     const { room_id } = req.params;      // รับ room_id จาก URL

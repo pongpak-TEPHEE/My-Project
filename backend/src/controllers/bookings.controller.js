@@ -1,7 +1,7 @@
 import { pool } from '../config/db.js';
 import { sendBookingStatusEmail } from '../services/mailer.js';
 
-
+// /bookings/pending
 // ดึงรายการที่ "รออนุมัติ"
 export const getPendingBookings = async (req, res) => {
   try {
@@ -33,6 +33,7 @@ export const getPendingBookings = async (req, res) => {
   }
 };
 
+// /bookings/rejected
 // ดึงรายการที่ "ถูกปฏิเสธ"
 export const getRejectedBookings = async (req, res) => {
   try {
@@ -63,6 +64,7 @@ export const getRejectedBookings = async (req, res) => {
   }
 };
 
+// /bookings/approved
 // ดึงรายการที่ "อนุมัติแล้ว"
 export const getApprovedBookings = async (req, res) => {
   try {
@@ -93,6 +95,7 @@ export const getApprovedBookings = async (req, res) => {
   }
 };
 
+// /bookings/:id
 // ใช้เมื่อสแกร QR code ห้องระบบ frontend จะส่ง room_id มาตรวจสอบหลังบ้านว่าห้องนี้เวลานี้ห้องว่างไหม ณ ขณะ ที่เราแสกน
 export const getRoomStatus = async (req, res) => {
   const { id } = req.params; // นี่คือ room_id (เช่น 26504)
@@ -153,6 +156,7 @@ export const getRoomStatus = async (req, res) => {
   }
 };
 
+// /bookings/teacher
 // สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
@@ -246,6 +250,7 @@ export const createBookingForTeacher = async (req, res) => {
   }
 };
 
+// /bookings/staff
 // สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForStaff = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
@@ -344,6 +349,7 @@ export const createBookingForStaff = async (req, res) => {
   }
 };
 
+// /bookings/:id/status
 // อัปเดตสถานะการจอง (Approve / Reject) for role staff only !!!!!!
 export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
@@ -414,6 +420,7 @@ export const updateBookingStatus = async (req, res) => {
   }
 };
 
+// /bookings/allBooking/:roomId
 // สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา
 export const getAllBooking =  async (req, res) => {
     const { roomId } = req.params;
@@ -442,6 +449,7 @@ export const getAllBooking =  async (req, res) => {
     }
 };
 
+// /bookings/my-history
 // ดึงรายการที่เราเคยจอง เช่น ผมนาย A มี userId = 001 : จองห้องอะไรบ้างก็ดึงมาทั้งหมด
 export const getMyBookings = async (req, res) => {
   const teacher_id = req.user.userId; // ดึง ID จาก Token (Middleware แกะมาให้แล้ว)
@@ -472,6 +480,7 @@ export const getMyBookings = async (req, res) => {
   }
 };
 
+// /bookings/:id/cancel
 // ยกเลิกการจอง (Cancel Booking)
 export const cancelBooking = async (req, res) => {
   const { id } = req.params; // Booking ID ที่จะยกเลิก
