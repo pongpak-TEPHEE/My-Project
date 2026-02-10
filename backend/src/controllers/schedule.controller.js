@@ -67,7 +67,7 @@ function parseExcelDate(value, type = 'date') {
 }
 
 // /schedule/import 
-// อัพโหลดข้อมูล file และอ่านไฟล์เพื่อนำไปใส่ใน database
+// อัพโหลดข้อมูล file และอ่านไฟล์เพื่อนำไปใส่ใน databaseexport const importClassSchedules = async (req, res) => {
 export const importClassSchedules = async (req, res) => {
   try {
     if (!req.file) {
@@ -77,14 +77,13 @@ export const importClassSchedules = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
     
-    // ดึง Sheet แรก (ExcelJS เริ่มนับ Sheet ที่ 1)
     const worksheet = workbook.getWorksheet(1);
     
     if (!worksheet) {
        return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
     }
 
-    // แปลงข้อมูลใน Sheet ให้เป็น Array of Objects (เลียนแบบ sheet_to_json)
+    // --- ส่วนการแปลง Excel ---
     const importedData = [];
     let headers = {};
 
@@ -94,22 +93,15 @@ export const importClassSchedules = async (req, res) => {
           headers[colNumber] = cell.value; 
         });
       } else {
-        // แถวที่ 2+: เก็บข้อมูล
         let rowData = {};
         row.eachCell((cell, colNumber) => {
           const key = headers[colNumber];
-          // ดึงค่า value (exceljs บางที return เป็น object ถ้าเป็นสูตร/link)
           let cellValue = cell.value;
-          
-          // ตรวจสอบว่าเป็น Object หรือ Text ธรรมดา (กรณีมี Hyperlink หรือ RichText)
           if (typeof cellValue === 'object' && cellValue !== null) {
              if (cellValue.text) cellValue = cellValue.text;
              else if (cellValue.result) cellValue = cellValue.result;
           }
-          
-          if (key) {
-             rowData[key] = cellValue;
-          }
+          if (key) rowData[key] = cellValue;
         });
         importedData.push(rowData);
       }
@@ -117,12 +109,10 @@ export const importClassSchedules = async (req, res) => {
 
     console.log(`📥 กำลังนำเข้าตารางเรียน ${importedData.length} รายการ`);
 
-    // STEP 1: หา ID ล่าสุดใน DB
+    // --- STEP 1: หา ID ล่าสุด ---
     let currentIdNum = 0;
-
     const lastIdResult = await pool.query(
-      `SELECT schedule_id FROM public."Schedules" 
-       ORDER BY schedule_id DESC LIMIT 1`
+      `SELECT schedule_id FROM public."Schedules" ORDER BY schedule_id DESC LIMIT 1`
     );
 
     if (lastIdResult.rows.length > 0) {
@@ -132,13 +122,13 @@ export const importClassSchedules = async (req, res) => {
       if (isNaN(currentIdNum)) currentIdNum = 0;
     }
 
-    console.log(`🔢 ID ล่าสุดคือ: schedule${String(currentIdNum).padStart(3, '0')}, เริ่มรันต่อ...`);
-
-    // STEP 2: วนลูปบันทึกข้อมูล
-    let successCount = 0;
+    // --- STEP 2: วนลูปตรวจสอบข้อมูล ---
+    
+    // ✅✅✅ แก้ไขจุดที่ 1: ประกาศตัวแปรไว้นอก Loop (สำคัญมาก)
+    const validData = []; 
     const errors = [];
+    let successCount = 0;
 
-    // เปลี่ยนตัวแปรจาก date เป็น importedData เพื่อไม่ให้สับสนกับตัวแปรวันที่
     for (const [index, row] of importedData.entries()) {
       try {
         const roomId = row.room_id ? String(row.room_id).trim() : null;
@@ -146,79 +136,100 @@ export const importClassSchedules = async (req, res) => {
         const teacherName = row.teacher_name ? String(row.teacher_name).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
         
-        // ฟังก์ชันจัดการวันที่ (ExcelJS มักจะส่งมาเป็น Date Object อยู่แล้ว ถ้า Format ใน Excel ถูก)
+        // แปลงค่าวันที่และเวลา
         const startTime = formatExcelData(row.start_time, 'time'); 
         const endTime = formatExcelData(row.end_time, 'time');
-        const scheduleDate = formatExcelData(row.date, 'date'); // เปลี่ยนชื่อตัวแปรไม่ให้ซ้ำ
+        const scheduleDate = formatExcelData(row.date, 'date'); 
 
-        if (!roomId || !semesterId) {
-           throw new Error('ข้อมูลไม่ครบ (ต้องมี room_id, semester_id)');
+        if (!roomId || !semesterId || !scheduleDate) {
+           throw new Error('ข้อมูลไม่ครบ (ต้องมี room_id, semester_id, date)');
         }
 
-        // Generate ID
-        currentIdNum++;
-        const nextScheduleId = `schedule${String(currentIdNum).padStart(3, '0')}`;
-
-        await pool.query(
-          `INSERT INTO public."Schedules" 
-           (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [
-            nextScheduleId, 
-            roomId,        
-            subjectName,    
-            teacherName,    
-            startTime,      
-            endTime,        
-            semesterId,     
-            scheduleDate    
-          ]
+        // 🛑 CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
+        const scheduleConflictCheck = await pool.query(
+            `SELECT schedule_id, subject_name, start_time, end_time
+             FROM public."Schedules"
+             WHERE room_id = $1
+             AND date = $2
+             AND (start_time < $4 AND end_time > $3)`,
+            [roomId, scheduleDate, startTime, endTime]
         );
+
+        if (scheduleConflictCheck.rows.length > 0) {
+            const conflict = scheduleConflictCheck.rows[0];
+            throw new Error(
+                `เวลาชนกับวิชาที่มีอยู่แล้ว: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
+            );
+        }
+
+        // 🛑 CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
+        const bookingConflictCheck = await pool.query(
+            `SELECT booking_id, purpose, start_time, end_time 
+             FROM public."Booking" 
+             WHERE room_id = $1 
+             AND date = $2 
+             AND status NOT IN ('cancelled', 'rejected') 
+             AND (start_time < $4 AND end_time > $3)`, 
+            [roomId, scheduleDate, startTime, endTime]
+        );
+
+        if (bookingConflictCheck.rows.length > 0) {
+            const conflict = bookingConflictCheck.rows[0];
+            throw new Error(
+                `เวลาชนกับการจอง ID: ${conflict.booking_id} (${conflict.purpose} ${conflict.start_time}-${conflict.end_time})`
+            );
+        }
+
+        // --- ถ้าไม่ชนใครเลย ก็ทำต่อ ---
+        
+        // ✅✅✅ แก้ไขจุดที่ 2: ลบ Loop ซ้อน Loop ออก และ push ใส่ validData ตรงๆ
+        validData.push({
+            // สร้าง ID จำลองส่งไปให้ Frontend ดูด้วยก็ได้ (Optional)
+            temp_id: index + 1, 
+            room_id: roomId,
+            subject_name: subjectName,
+            teacher_name: teacherName,
+            start_time: startTime,
+            end_time: endTime,
+            semester_id: semesterId,
+            date: scheduleDate
+        });
+        
         successCount++;
 
       } catch (err) {
         console.error(`❌ Error row ${index + 2}:`, err.message);
-        errors.push({ row: index + 2, error: err.message });
+
+        let errorType = 'UNKNOWN';
+        if (err.message.includes('ชนกับ')) {
+            errorType = 'COLLISION'; 
+        } else if (err.message.includes('ข้อมูลไม่ครบ')) {
+            errorType = 'INVALID_DATA';
+        }
+
+        errors.push({ 
+          row: index + 2, 
+          room: row.room_id || 'ไม่ระบุ', 
+          type: errorType,
+          message: err.message 
+        });
       }
     }
 
+    // ✅✅✅ จุดที่ 3: ส่ง Response (ตอนนี้รู้จัก validData และ errors แล้ว)
     res.json({
-      message: 'Import ตารางเรียนเรียบร้อยแล้ว',
-      total: importedData.length,
-      success: successCount,
-      failed: errors.length,
-      errors: errors.length > 0 ? errors : undefined
+        message: 'ตรวจสอบไฟล์เรียบร้อย (ยังไม่ได้บันทึก)',
+        total: importedData.length,
+        valid_count: validData.length,
+        error_count: errors.length,
+        previewData: validData, 
+        errors: errors.length > 0 ? errors : undefined
     });
 
   } catch (error) {
     console.error('Import Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' });
   }
-};
-
-
-const insertScheduleToDB = async (client, data, currentIdNum) => {
-  // Generate ID ใหม่ (รับค่าตัวเลขล่าสุดมา + 1)
-  const nextIdNum = currentIdNum + 1;
-  const nextScheduleId = `schedule${String(nextIdNum).padStart(3, '0')}`;
-
-  await client.query(
-    `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      nextScheduleId,
-      data.room_id,
-      data.subject_name,
-      data.teacher_name,
-      data.start_time,
-      data.end_time,
-      data.semester_id,
-      data.date
-    ]
-  );
-
-  return nextIdNum; // ส่งค่าตัวเลขล่าสุดกลับไป เพื่อให้รอบต่อไปนับต่อได้
 };
 
 export const confirmSchedules = async (req, res) => {
@@ -271,6 +282,30 @@ export const confirmSchedules = async (req, res) => {
   } finally {
     client.release(); // คืน Connection
   }
+};
+
+const insertScheduleToDB = async (client, data, currentIdNum) => {
+  // Generate ID ใหม่ (รับค่าตัวเลขล่าสุดมา + 1)
+  const nextIdNum = currentIdNum + 1;
+  const nextScheduleId = `schedule${String(nextIdNum).padStart(3, '0')}`;
+
+  await client.query(
+    `INSERT INTO public."Schedules" 
+     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      nextScheduleId,
+      data.room_id,
+      data.subject_name,
+      data.teacher_name,
+      data.start_time,
+      data.end_time,
+      data.semester_id,
+      data.date
+    ]
+  );
+
+  return nextIdNum; // ส่งค่าตัวเลขล่าสุดกลับไป เพื่อให้รอบต่อไปนับต่อได้
 };
 
 // /schedule/:room_id

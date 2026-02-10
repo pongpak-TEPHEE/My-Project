@@ -421,7 +421,7 @@ export const updateBookingStatus = async (req, res) => {
 };
 
 // /bookings/allBooking/:roomId
-// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา
+// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา เพื่อใช้ในปฐิทิน
 export const getAllBooking =  async (req, res) => {
     const { roomId } = req.params;
     const { status } = req.query;
@@ -433,7 +433,7 @@ export const getAllBooking =  async (req, res) => {
                 b.date,
                 b.start_time,
                 b.end_time,
-                b.purpose,
+                b.purpose, -- ไม่จำเป็น
                 u.name as teacher_name,
                 u.surname as teacher_surname
             FROM public."Booking" b
