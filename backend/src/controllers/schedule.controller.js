@@ -67,7 +67,8 @@ function parseExcelDate(value, type = 'date') {
 }
 
 // /schedule/import 
-// อัพโหลดข้อมูล file และอ่านไฟล์เพื่อนำไปใส่ใน databaseexport const importClassSchedules = async (req, res) => {
+// อัพโหลดข้อมูล file 
+// มีการป้องกันการชนกันของข้อมูลการจองภายใน file โดยจะมีข้อความแจ้งว่าชนกับห้องไหนบ้าง
 export const importClassSchedules = async (req, res) => {
   try {
     if (!req.file) {
@@ -123,8 +124,6 @@ export const importClassSchedules = async (req, res) => {
     }
 
     // --- STEP 2: วนลูปตรวจสอบข้อมูล ---
-    
-    // ✅✅✅ แก้ไขจุดที่ 1: ประกาศตัวแปรไว้นอก Loop (สำคัญมาก)
     const validData = []; 
     const errors = [];
     let successCount = 0;

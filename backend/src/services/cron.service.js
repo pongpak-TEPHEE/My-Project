@@ -18,7 +18,7 @@ export const startCleanupJob = () => {
         console.log(`✅ OTP Cleanup: Deleted ${result.rowCount} expired OTPs.`);
       }
       // ถ้าไม่มีอะไรให้ลบ ไม่ต้อง log ก็ได้ครับ จะได้ไม่รก Terminal
-      
+    
     } catch (error) {
       console.error('❌ OTP Cleanup Error:', error);
     }

@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js';
 import { sendBookingStatusEmail } from '../services/mailer.js';
 
+
 // /bookings/pending
 // ดึงรายการที่ "รออนุมัติ"
 export const getPendingBookings = async (req, res) => {
@@ -159,8 +160,8 @@ export const getRoomStatus = async (req, res) => {
 // /bookings/teacher
 // สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
-  const { room_id, purpose, date, start_time, end_time } = req.body;
 
+  const { room_id, purpose, date, start_time, end_time } = req.body;
   const teacher_id = req.user.user_id; 
 
   try {
@@ -174,8 +175,29 @@ export const createBookingForTeacher = async (req, res) => {
     }
 
     // 1. ตรวจสอบว่าห้องว่างไหม? 
+    // 🛑 DANGER ZONE 1: เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
+    const scheduleConflict = await pool.query(
+      `SELECT subject_name, start_time, end_time
+       FROM public."Schedules"
+       WHERE room_id = $1
+       AND date = $2
+       AND (start_time < $4 AND end_time > $3)`, // สูตรเช็คเวลาชน
+      [room_id, date, start_time, end_time]
+    );
 
-    const existingBooking = await pool.query(
+    if (scheduleConflict.rows.length > 0) {
+      const conflict = scheduleConflict.rows[0];
+      // ส่ง status 409 (Conflict) กลับไป
+      return res.status(409).json({ 
+        message: `ไม่สามารถจองได้ เนื่องจากห้องนี้มีเรียนวิชา: ${conflict.subject_name}`,
+        conflict_type: 'schedule',
+        time: `${conflict.start_time} - ${conflict.end_time}`
+      });
+    }
+
+    // 🛑 DANGER ZONE 2: เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
+
+    const bookingConflict = await pool.query(
     `SELECT booking_id, status FROM public."Booking"
      WHERE room_id = $1 
      AND date = $2 
@@ -185,8 +207,8 @@ export const createBookingForTeacher = async (req, res) => {
 );
     
     // ในตัวแปร existingBooking คือถ้ามีการขอจองมา 1 คำขอ ก็จะไปถาม database ว่ามีใครที่มีสถาณะ approved แล้วมีช่วงเวลาตรงกันบ้างถ้ามีจะถูกเก็บใน existingBooking ทำให้มี rows มากกว่า 1
-    if (existingBooking.rows.length > 0) {
-    const approvedBooking = existingBooking.rows.find(b => b.status === 'approved');
+    if (bookingConflict.rows.length > 0) {
+    const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
 
     // ถ้าเข้าเงือนไข แสดงว่าข้อมูลใน existingBooking มีสถาณะ approved 
     if (approvedBooking) {
@@ -483,9 +505,13 @@ export const getMyBookings = async (req, res) => {
 // /bookings/:id/cancel
 // ยกเลิกการจอง (Cancel Booking)
 export const cancelBooking = async (req, res) => {
+  console.log("cancel is activate!!!");
   const { id } = req.params; // Booking ID ที่จะยกเลิก
-  const teacher_id = req.user.userId; // ต้องเป็นเจ้าของรายการเท่านั้นถึงจะลบได้
+  const teacher_id = req.user.user_id; // ต้องเป็นเจ้าของรายการเท่านั้นถึงจะลบได้
 
+  console.log("id : ", id);
+  console.log("teacher id : ", teacher_id);
+   
   try {
     // 2.1 ตรวจสอบก่อนว่ารายการนี้เป็นของคนนี้จริงไหม + สถานะยกเลิกได้ไหม
     const checkQuery = await pool.query(
@@ -496,6 +522,7 @@ export const cancelBooking = async (req, res) => {
 
     if (checkQuery.rows.length === 0) {
       return res.status(404).json({ message: 'ไม่พบรายการจอง หรือคุณไม่มีสิทธิ์ยกเลิกรายการนี้' });
+      console.log("ไม่มีรายการที่ตรง ???");
     }
 
     const booking = checkQuery.rows[0];
@@ -527,5 +554,114 @@ export const cancelBooking = async (req, res) => {
   } catch (error) {
     console.error('Cancel Booking Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการยกเลิกการจอง' });
+  }
+};
+
+// /bookings/:id  (POST method)
+// แก้ไขการจอง
+export const editBooking = async (req, res) => {
+  // โดยข้อมูลที่ frontend เอาเข้ามามี purpose, date, start_time, end_time
+  const { id } = req.params; // booking_id ที่จะแก้
+  const { purpose, date, start_time, end_time } = req.body;
+  const { user_id, role } = req.user; // จาก Token
+
+  // console.log("user_id, role : ", req.user)
+
+  // Validation เบื้องต้น
+  if (!purpose || !date || !start_time || !end_time) {
+    return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+  }
+
+  try {
+
+    // STEP 1: ดึงข้อมูลเก่ามาก่อน (เพื่อเช็คสิทธิ์ และเอา room_id)
+    const oldBookingResult = await pool.query(
+      `SELECT * FROM public."Booking" WHERE booking_id = $1`,
+      [id]
+    );
+
+    if (oldBookingResult.rows.length === 0) {
+      return res.status(404).json({ message: 'ไม่พบรายการจองนี้' });
+    }
+
+    const oldBooking = oldBookingResult.rows[0];
+    const roomId = oldBooking.room_id; // ต้องใช้ room_id จาก database
+
+    // STEP 2: ตรวจสอบสิทธิ์ (เจ้าของ หรือ staff เท่านั้น)
+    // user_id ของคนที่จองและ user_id ของคนที่แก้ไขต้องตรงกัน
+    if (oldBooking.teacher_id !== user_id) {
+      return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขการจองของคนอื่น' });
+    }
+
+    // ห้ามแก้รายการที่ถูกยกเลิกไปแล้ว (Optional)
+    if (oldBooking.status === 'cancelled') {
+        return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้' });
+    }
+
+
+    // STEP 3: ตรวจสอบเวลาชน (Collision Check) 🛑
+
+    // 3.1 เช็คชนกับ "ตารางเรียน (Schedule)"
+    const scheduleConflict = await pool.query(
+      `SELECT subject_name, start_time, end_time
+       FROM public."Schedules"
+       WHERE room_id = $1
+       AND date = $2
+       AND (start_time < $4 AND end_time > $3)`,
+      [roomId, date, start_time, end_time]
+    );
+
+    if (scheduleConflict.rows.length > 0) {
+      const conflict = scheduleConflict.rows[0];
+      return res.status(409).json({ 
+        message: `แก้ไขไม่ได้ เนื่องจากเวลาชนกับวิชา: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
+      });
+    }
+
+    // 3.2 เช็คชนกับ "Booking อื่น"
+    const bookingConflict = await pool.query(
+      `SELECT booking_id, status FROM public."Booking"
+       WHERE room_id = $1 
+       AND date = $2 
+       AND (start_time < $4 AND end_time > $3)
+       AND status IN ('approved', 'pending')
+       AND booking_id != $5`, // ห้ามเช็คเจอกับตัวเอง (Exclude current ID)
+      [roomId, date, start_time, end_time, id] 
+    );
+
+    if (bookingConflict.rows.length > 0) {
+      // ถ้าเจอ แสดงว่าเป็นของคนอื่นแน่นอน (เพราะกันตัวเองออกไปแล้ว)
+      return res.status(409).json({ 
+          message: 'แก้ไขไม่ได้ เนื่องจากช่วงเวลานี้มีคนอื่นจองแล้ว' 
+      });
+    }
+
+    // STEP 4: อัปเดตข้อมูล (Update) ✅
+    // ต้องรีเซ็ตสถานะเป็น 'pending' เสมอ เพราะมีการเปลี่ยนเวลา/จุดประสงค์
+    // (ยกเว้น Admin แก้เอง อาจจะให้ Approved เลยก็ได้ แล้วแต่ Logic)
+    
+    let newStatus = 'pending';
+    if (role === 'admin') newStatus = 'approved'; // ถ้า Admin แก้ ให้ผ่านเลย (Optional)
+
+    await pool.query(
+      `UPDATE public."Booking" 
+       SET purpose = $1, 
+           date = $2, 
+           start_time = $3, 
+           end_time = $4, 
+           status = $5
+       WHERE booking_id = $6`,
+      [purpose, date, start_time, end_time, newStatus, id]
+    );
+
+    res.json({ 
+      message: 'แก้ไขการจองสำเร็จ (สถานะถูกปรับเป็นรออนุมัติใหม่)', 
+      booking_id: id,
+      status: newStatus
+    });
+
+  } catch (error) {
+    console.error('Edit Booking Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล' });
   }
 };

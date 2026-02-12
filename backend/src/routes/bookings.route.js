@@ -9,7 +9,8 @@ import {
     getRejectedBookings, 
     getAllBooking,
     getMyBookings,
-    cancelBooking
+    cancelBooking,
+    editBooking
  } 
  from '../controllers/bookings.controller.js';
  
@@ -49,5 +50,7 @@ router.get('/my-history', authenticateToken, getMyBookings);
 // API ยกเลิกการจอง
 // PUT http://localhost:3000/bookings/15/cancel
 router.put('/:id/cancel', authenticateToken, cancelBooking);
+
+router.put('/:id', authenticateToken, authorizeRole('teacher', 'staff'), editBooking);
 
 export default router;
