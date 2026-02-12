@@ -181,7 +181,8 @@ export const createBookingForTeacher = async (req, res) => {
        FROM public."Schedules"
        WHERE room_id = $1
        AND date = $2
-       AND (start_time < $4 AND end_time > $3)`, // สูตรเช็คเวลาชน
+       AND (start_time < $4 AND end_time > $3)  -- ช่วงเวลาชนกัน
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, // 👈 เพิ่มบรรทัดนี้: เฉพาะวิชาที่ไม่ได้งดสอน
       [room_id, date, start_time, end_time]
     );
 
@@ -279,7 +280,6 @@ export const createBookingForStaff = async (req, res) => {
 
   const teacher_id = req.user.user_id; 
   // console.log("teacher id : ", teacher_id);
-
   try {
 
     // 0. ดักการจองย้อนหลัง
@@ -292,8 +292,30 @@ export const createBookingForStaff = async (req, res) => {
     }
 
     // 1. ตรวจสอบว่าห้องว่างไหม? 
+    // 🛑 DANGER ZONE 1: เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
+    const scheduleConflict = await pool.query(
+      `SELECT subject_name, start_time, end_time
+       FROM public."Schedules"
+       WHERE room_id = $1
+       AND date = $2
+       AND (start_time < $4 AND end_time > $3)  -- ช่วงเวลาชนกัน
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, // 👈 เพิ่มบรรทัดนี้: เฉพาะวิชาที่ไม่ได้งดสอน
+      [room_id, date, start_time, end_time]
+    );
 
-    const existingBooking = await pool.query(
+    if (scheduleConflict.rows.length > 0) {
+      const conflict = scheduleConflict.rows[0];
+      // ส่ง status 409 (Conflict) กลับไป
+      return res.status(409).json({ 
+        message: `ไม่สามารถจองได้ เนื่องจากห้องนี้มีเรียนวิชา: ${conflict.subject_name}`,
+        conflict_type: 'schedule',
+        time: `${conflict.start_time} - ${conflict.end_time}`
+      });
+    }
+
+    // 🛑 DANGER ZONE 2: เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
+
+    const bookingConflict = await pool.query(
     `SELECT booking_id, status FROM public."Booking"
      WHERE room_id = $1 
      AND date = $2 
@@ -303,8 +325,9 @@ export const createBookingForStaff = async (req, res) => {
 );
     
     // ในตัวแปร existingBooking คือถ้ามีการขอจองมา 1 คำขอ ก็จะไปถาม database ว่ามีใครที่มีสถาณะ approved แล้วมีช่วงเวลาตรงกันบ้างถ้ามีจะถูกเก็บใน existingBooking ทำให้มี rows มากกว่า 1
-    if (existingBooking.rows.length > 0) {
-    const approvedBooking = existingBooking.rows.find(b => b.status === 'approved');
+    if (bookingConflict.rows.length > 0) {
+    const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
+
 
     // ถ้าเข้าเงือนไข แสดงว่าข้อมูลใน existingBooking มีสถาณะ approved 
     if (approvedBooking) {
@@ -566,7 +589,6 @@ export const editBooking = async (req, res) => {
   const { user_id, role } = req.user; // จาก Token
 
   // console.log("user_id, role : ", req.user)
-
   // Validation เบื้องต้น
   if (!purpose || !date || !start_time || !end_time) {
     return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
@@ -598,9 +620,7 @@ export const editBooking = async (req, res) => {
         return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้' });
     }
 
-
     // STEP 3: ตรวจสอบเวลาชน (Collision Check) 🛑
-
     // 3.1 เช็คชนกับ "ตารางเรียน (Schedule)"
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time

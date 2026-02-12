@@ -10,7 +10,7 @@ app.use(cors({
   // ⚠️⚠️⚠️⚠️⚠️⚠️ เราต้องตั้งค่าให้แค่ frontend เท่านั้นที่จะสามมารถ ⚠️⚠️⚠️⚠️⚠️⚠️
   
     origin: "*", // '*' :  อนุญาตให้ทุกคนเข้าถึงได้ (เหมาะสำหรับช่วง Dev/Test/ngrok)  
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // อนุญาต Method อะไรบ้าง
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // อนุญาต Method อะไรบ้าง
     allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'], // อนุญาต Header อะไรบ้าง (สำคัญสำหรับ Token)
     credentials: true // อนุญาตให้ส่ง Token/Cookie มาได้
 }));
@@ -48,6 +48,6 @@ app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/rooms', roomsRoutes);
 app.use('/bookings', bookingsRoutes);
-app.use('/schedule', scheduleRoutes)
+app.use('/schedules', scheduleRoutes)
 
 export default app; // ส่งออก app เพื่อให้ main.js ใช้งานต่อ

@@ -311,10 +311,9 @@ const insertScheduleToDB = async (client, data, currentIdNum) => {
 // ดึงรายการการจองห้องที่มาจาก Excel table
 export const getSchedule = async (req, res) => {
   try {
-    const { room_id } = req.params;      // รับ room_id จาก URL
-    const { semester_id } = req.query;   // รับ semester_id จาก Query Param (ถ้ามี)
+    const { room_id } = req.params;
+    const { semester_id } = req.query;
 
-    // 1. สร้าง Query พื้นฐาน
     let sql = `
       SELECT 
         schedule_id, 
@@ -324,34 +323,39 @@ export const getSchedule = async (req, res) => {
         start_time, 
         end_time, 
         semester_id, 
-        date 
+        date,
+        temporarily_closed,  -- ✅ 1. ต้อง SELECT ออกมาด้วย
+        teacher_id           -- (แถม) ควรดึงออกมาด้วย เพื่อให้ Frontend เช็คสิทธิ์ได้
       FROM public."Schedules"
       WHERE room_id = $1
     `;
     
-    
     const params = [room_id];
 
-    // 2. ถ้ามีการส่ง semester_id มา ให้กรองเฉพาะเทอมนั้น
     if (semester_id) {
       sql += ` AND semester_id = $2`;
       params.push(semester_id);
     }
 
-    // 3. เพิ่มการเรียงลำดับ (ORDER BY)
-    // เรียงตาม 'data' (วัน/วันที่) ก่อน แล้วค่อยเรียงตามเวลาเริ่มเรียน
-    // (หมายเหตุ: ถ้า data เป็นภาษาไทย 'จันทร์', 'อังคาร' Database อาจจะเรียงตามก-ฮ ไม่ใช่วันจริง
-    // แต่ถ้า data เป็นวันที่ (Date) หรือตัวเลข จะเรียงได้ถูกต้องทันที)
     sql += ` ORDER BY date ASC, start_time ASC`;
 
     const result = await pool.query(sql, params);
 
-    // 4. จัด Format เวลาให้สวยงาม (ตัดวินาทีออก ถ้า Database เก็บมาเป็น 09:00:00)
-    const formattedSchedules = result.rows.map(row => ({
-      ...row,
-      start_time: String(row.start_time).substring(0, 5), // ตัดเหลือ 09:00
-      end_time: String(row.end_time).substring(0, 5)      // ตัดเหลือ 12:00
-    }));
+    const formattedSchedules = result.rows.map(row => {
+      // ✅ 2. วิธีเรียกใช้ที่ถูกต้องคือ row.temporarily_closed
+      // ถ้าค่าเป็น null ให้ถือว่าเป็น false (ไม่ได้งด)
+      const isClosed = row.temporarily_closed === true; 
+
+      return {
+        ...row,
+        start_time: String(row.start_time).substring(0, 5),
+        end_time: String(row.end_time).substring(0, 5),
+        temporarily_closed: isClosed, // ส่งค่า boolean กลับไปให้ Frontend
+        
+        // (Optional) เพิ่มข้อความสถานะให้ Frontend ใช้ง่ายๆ
+        status_text: isClosed ? 'งดคลาส' : 'เรียนปกติ'
+      };
+    });
 
     res.json({
       room_id,
@@ -363,5 +367,70 @@ export const getSchedule = async (req, res) => {
   } catch (error) {
     console.error('Get Schedule Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงตารางเรียน' });
+  }
+};
+// // PATCH /schedules/:id/status
+// ฟังก์ชันเปลี่ยนสถานะงดใช้ห้อง 
+export const updateScheduleStatus = async (req, res) => {
+  const { id } = req.params; // รับ schedule_id
+  const { temporarily_closed } = req.body;
+
+  
+  // ✅ ดึง user_id และ role จาก Token (ที่ผ่าน Middleware มา)
+  // user_id นี้คือ ID ของคนที่กำลังกดปุ่มอยู่ตอนนี้
+  const { user_id, role } = req.user;
+
+    console.log("user_id : ", user_id);
+
+  // ตรวจสอบ Input
+  if (typeof temporarily_closed !== 'boolean') {
+    return res.status(400).json({ message: 'ข้อมูลไม่ถูกต้อง (ต้องเป็น true หรือ false)' });
+  }
+
+  try {
+    // -----------------------------------------------------------
+    // 🛡️ สร้าง Query แบบ Dynamic (แยก Logic ตาม Role)
+    // -----------------------------------------------------------
+    
+    let sql = `UPDATE public."Schedules"
+               SET temporarily_closed = $1
+               WHERE schedule_id = $2`;
+    
+    const params = [temporarily_closed, id];
+
+    // 🔒 กฎ: ถ้า "ไม่ใช่ Admin" ต้องเช็คว่า teacher_id ตรงกับ user_id ไหม
+    // (สมมติว่าในตาราง Schedules มีคอลัมน์ชื่อ teacher_id นะครับ)
+    if (role !== 'staff') {
+        sql += ` AND teacher_id = $3`; 
+        params.push(user_id);
+    }
+
+    sql += ` RETURNING schedule_id, subject_name, temporarily_closed`;
+
+    // -----------------------------------------------------------
+    // 🚀 ยิง Database
+    // -----------------------------------------------------------
+    const result = await pool.query(sql, params);
+
+    // ถ้าไม่เจอผลลัพธ์ (row = 0) เป็นไปได้ 2 กรณี:
+    // 1. ไม่มี ID นี้จริง
+    // 2. มี ID นี้จริง แต่ user_id ไม่ตรง (โดน AND teacher_id = ... ดักไว้)
+    if (result.rows.length === 0) {
+      return res.status(403).json({ 
+          message: 'ไม่พบข้อมูล หรือ คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้' 
+      });
+    }
+
+    const updatedSchedule = result.rows[0];
+    const statusText = temporarily_closed ? 'งดใช้ห้อง (Closed)' : 'ใช้งานปกติ (Active)';
+
+    res.json({
+      message: `อัปเดตสถานะสำเร็จ: ${statusText}`,
+      schedule: updatedSchedule
+    });
+
+  } catch (error) {
+    console.error('Update Schedule Status Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการอัปเดตสถานะ' });
   }
 };

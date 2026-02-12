@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { importClassSchedules, getSchedule, confirmSchedules } from '../controllers/schedule.controller.js';
+import { importClassSchedules, getSchedule, confirmSchedules, updateScheduleStatus } from '../controllers/schedule.controller.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -29,6 +29,16 @@ router.post('/confirm',
     confirmSchedules
 );
 
+// ดึงข้อมูลที่เก็บไว้ใน table schedule ไปแสดงผลในตาราง
 router.get('/:room_id', getSchedule)
+
+// เรียกใช้การ งดใช้ห้อง
+// PATCH /schedules/:id/status
+// :id คือ schedule_id
+router.patch('/:id/status', 
+  authenticateToken, 
+  authorizeRole('teacher', 'staff'), 
+  updateScheduleStatus
+);
 
 export default router;
