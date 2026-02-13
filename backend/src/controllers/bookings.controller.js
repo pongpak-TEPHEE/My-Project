@@ -685,3 +685,120 @@ export const editBooking = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล' });
   }
 };
+
+// /bookings//my-bookings/active (GET method) 
+// การจองของฉัน (Active): วันปัจจุบันหรืออนาคต + (Pending/Approved)
+export const getMyActiveBookings = async (req, res) => {
+  const { user_id } = req.user;
+
+  try {
+    const result = await pool.query(
+      `SELECT * FROM public."Booking"
+       WHERE teacher_id = $1
+       AND date >= CURRENT_DATE -- ✅ ต้องเป็นวันนี้ หรือ อนาคตเท่านั้น
+       AND status IN ('pending', 'approved') -- ✅ เฉพาะสถานะที่ยังดำเนินการอยู่
+       ORDER BY date ASC, start_time ASC`, // เรียงจาก ใกล้ -> ไกล
+      [user_id]
+    );
+
+    // จัด Format เวลาให้สวยงาม (ตัดวินาทีออก)
+    const bookings = result.rows.map(row => ({
+      ...row,
+      start_time: String(row.start_time).substring(0, 5),
+      end_time: String(row.end_time).substring(0, 5),
+      // เพิ่ม flag ให้ Frontend รู้ว่า "รายการนี้แก้ไข/ยกเลิกได้นะ"
+      can_edit_delete: true 
+    }));
+
+    res.json(bookings);
+
+  } catch (error) {
+    console.error('Get Active Bookings Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลการจอง' });
+  }
+};
+
+// /bookings//my-bookings/history (GET method)
+// ประวัติการจอง (History): อดีต หรือ รายการที่จบไปแล้ว (Rejected/Cancelled/Approved) โดยจะรวมกับ table schedules ที่มี status cancel ด้วย 
+export const getMyBookingHistory = async (req, res) => {
+  const { user_id } = req.user;
+
+  try {
+    // Query 1: ดึงจากตาราง Booking
+    const bookingQuery = pool.query(
+      `SELECT 
+          booking_id, room_id, purpose, date, start_time, end_time, status, created_at
+       FROM public."Booking"
+       WHERE teacher_id = $1
+       AND (
+         date < CURRENT_DATE -- อดีต
+         OR 
+         status IN ('rejected', 'cancelled', 'approved') -- จบสถานะแล้ว
+       )`,
+      [user_id]
+    );
+
+
+    // Query 2: ดึงจากตาราง Schedules (temporarily_closed = true)
+    // เงื่อนไข: เป็นเจ้าของวิชา (teacher_id) AND ถูกงดคลาส (temporarily_closed = true)
+    const scheduleQuery = pool.query(
+      `SELECT 
+          schedule_id, room_id, subject_name, date, start_time, end_time, temporarily_closed
+       FROM public."Schedules"
+       WHERE teacher_id = $1 
+       AND temporarily_closed = TRUE`, 
+      [user_id]
+    );
+
+    // ทำงานพร้อมกันทั้ง 2 Query (Parallel to up speed)
+    const [bookingResult, scheduleResult] = await Promise.all([bookingQuery, scheduleQuery]);
+
+    // ---------------------------------------------------------
+    // Merge & Normalize: แปลงร่างข้อมูลให้หน้าตาเหมือนกัน
+    // ---------------------------------------------------------
+
+    // 1. แปลงข้อมูล Booking
+    const bookings = bookingResult.rows.map(row => ({
+      id: row.booking_id,           // ใช้ชื่อกลางๆ ว่า id
+      type: 'booking',              // บอก frontend ว่าเป็น type ไหน
+      purpose: row.purpose,           // map purpose -> title
+      room_id: row.room_id,
+      date: row.date,
+      start_time: String(row.start_time).substring(0, 5),
+      end_time: String(row.end_time).substring(0, 5),
+      status: row.status,           // approved, rejected, cancelled
+      can_edit_delete: false
+    }));
+
+    // 2. แปลงข้อมูล Schedule (งดคลาส)
+    const schedules = scheduleResult.rows.map(row => ({
+      id: row.schedule_id,
+      type: 'class_schedule',       // บอก frontend ว่าเป็น type ไหน
+      purpose: row.subject_name,      // map subject_name -> title
+      room_id: row.room_id,
+      date: row.date,
+      start_time: String(row.start_time).substring(0, 5),
+      end_time: String(row.end_time).substring(0, 5),
+      status: 'class_cancelled',    // ✅ สร้างสถานะจำลองขึ้นมาเพื่อให้ Frontend แสดงผลถูก
+      can_edit_delete: false
+    }));
+
+    // 3. รวมเรียงลำดับ (ล่าสุดขึ้นก่อน)
+    const allHistory = [...bookings, ...schedules].sort((a, b) => {
+        // Order by Desc
+        const dateA = new Date(a.date); // วันที่ของรายการใน bookings
+        const dateB = new Date(b.date); // วันที่ของรายการใน schedules
+        // if two data have not equalment date
+        if (dateB - dateA !== 0) return dateB - dateA; 
+
+        // ถ้าวันเท่ากัน เรียงตามเวลาเริ่ม (Asc) 
+        return a.start_time.localeCompare(b.start_time);
+    });
+
+    res.json(allHistory);
+
+  } catch (error) {
+    console.error('Get Booking History Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงประวัติการจอง' });
+  }
+};

@@ -10,7 +10,9 @@ import {
     getAllBooking,
     getMyBookings,
     cancelBooking,
-    editBooking
+    editBooking,
+    getMyActiveBookings,
+    getMyBookingHistory
  } 
  from '../controllers/bookings.controller.js';
  
@@ -52,5 +54,11 @@ router.get('/my-history', authenticateToken, getMyBookings);
 router.put('/:id/cancel', authenticateToken, cancelBooking);
 
 router.put('/:id', authenticateToken, authorizeRole('teacher', 'staff'), editBooking);
+
+// ดึงรายการที่เวลาที่จองยังอยู่ในอนาคต และเป็น status approved, padding
+router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), getMyActiveBookings);
+
+// ดึงรายการที่เวลาที่จองเป็นอดีตไปแล้ว และเป็น status approved, rejected, cancel
+router.get('/my-bookings/history', authenticateToken, authorizeRole('teacher'), getMyBookingHistory);
 
 export default router;
