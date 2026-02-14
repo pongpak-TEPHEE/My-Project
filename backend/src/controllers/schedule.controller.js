@@ -44,27 +44,27 @@ const formatExcelData = (value, type = 'time') => {
   return String(value).trim();
 };
 
-// 🛠 Helper Function: จัดการเรื่องวันที่และเวลา, ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้
-function parseExcelDate(value, type = 'date') {
-    if (!value) return null;
+// Helper Function: จัดการเรื่องวันที่และเวลา, ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้ (ยังไม่เปิดใช้)
+// function parseExcelDate(value, type = 'date') {
+//     if (!value) return null;
 
-    // กรณี 1: ExcelJS ส่งมาเป็น Date Object อยู่แล้ว (ดีที่สุด)
-    if (value instanceof Date) {
-        if (type === 'time') {
-            // ดึงเฉพาะเวลา HH:mm:ss
-            return value.toTimeString().split(' ')[0];
-        } else {
-            // ดึงเฉพาะวันที่ YYYY-MM-DD (แก้เรื่อง Timezone Offset เบื้องต้น)
-            const year = value.getFullYear();
-            const month = String(value.getMonth() + 1).padStart(2, '0');
-            const day = String(value.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        }
-    }
+//     // กรณี 1: ExcelJS ส่งมาเป็น Date Object อยู่แล้ว (ดีที่สุด)
+//     if (value instanceof Date) {
+//         if (type === 'time') {
+//             // ดึงเฉพาะเวลา HH:mm:ss
+//             return value.toTimeString().split(' ')[0];
+//         } else {
+//             // ดึงเฉพาะวันที่ YYYY-MM-DD (แก้เรื่อง Timezone Offset เบื้องต้น)
+//             const year = value.getFullYear();
+//             const month = String(value.getMonth() + 1).padStart(2, '0');
+//             const day = String(value.getDate()).padStart(2, '0');
+//             return `${year}-${month}-${day}`;
+//         }
+//     }
 
-    // กรณี 2: เป็น String (เช่น "10:30" หรือ "2023-12-01")
-    return String(value).trim();
-}
+//     // กรณี 2: เป็น String (เช่น "10:30" หรือ "2023-12-01")
+//     return String(value).trim();
+// }
 
 // /schedule/import 
 // อัพโหลดข้อมูล file 
@@ -108,9 +108,10 @@ export const importClassSchedules = async (req, res) => {
       }
     });
 
-    console.log(`📥 กำลังนำเข้าตารางเรียน ${importedData.length} รายการ`);
+    console.log(`📥 ได้รับข้อมูลต้นแบบ ${importedData.length} รายการ (จะถูกขยายเป็น 15 สัปดาห์)`);
 
     // --- STEP 1: หา ID ล่าสุด ---
+    // (Logic ส่วนนี้อาจจะไม่ได้ใช้จริงตอน Preview แต่คงไว้ตามโครงเดิม)
     let currentIdNum = 0;
     const lastIdResult = await pool.query(
       `SELECT schedule_id FROM public."Schedules" ORDER BY schedule_id DESC LIMIT 1`
@@ -123,102 +124,131 @@ export const importClassSchedules = async (req, res) => {
       if (isNaN(currentIdNum)) currentIdNum = 0;
     }
 
-    // --- STEP 2: วนลูปตรวจสอบข้อมูล ---
+    // --- STEP 2: วนลูปตรวจสอบข้อมูล (แบบ 15 สัปดาห์) ---
     const validData = []; 
     const errors = [];
-    let successCount = 0;
+    let successCount = 0; // นับจำนวนคาบที่สร้างได้จริง (ไม่ใช่จำนวนแถว Excel)
 
+    // Loop 1: วนตามแถวใน Excel (รายวิชา)
     for (const [index, row] of importedData.entries()) {
-      try {
+        
+        // ดึงข้อมูลพื้นฐาน (ที่ไม่เปลี่ยนตามสัปดาห์)
         const roomId = row.room_id ? String(row.room_id).trim() : null;
         const subjectName = row.subject_name ? String(row.subject_name).trim() : "";
         const teacherName = row.teacher_name ? String(row.teacher_name).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
+        const teacherId = row.user_id ? String(row.user_id).trim() : "";
         
-        // แปลงค่าวันที่และเวลา
+        // เวลาเริ่ม-จบ (เหมือนเดิมทุกสัปดาห์)
         const startTime = formatExcelData(row.start_time, 'time'); 
         const endTime = formatExcelData(row.end_time, 'time');
-        const scheduleDate = formatExcelData(row.date, 'date'); 
-
-        if (!roomId || !semesterId || !scheduleDate) {
-           throw new Error('ข้อมูลไม่ครบ (ต้องมี room_id, semester_id, date)');
-        }
-
-        // 🛑 CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
-        const scheduleConflictCheck = await pool.query(
-            `SELECT schedule_id, subject_name, start_time, end_time
-             FROM public."Schedules"
-             WHERE room_id = $1
-             AND date = $2
-             AND (start_time < $4 AND end_time > $3)`,
-            [roomId, scheduleDate, startTime, endTime]
-        );
-
-        if (scheduleConflictCheck.rows.length > 0) {
-            const conflict = scheduleConflictCheck.rows[0];
-            throw new Error(
-                `เวลาชนกับวิชาที่มีอยู่แล้ว: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
-            );
-        }
-
-        // 🛑 CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
-        const bookingConflictCheck = await pool.query(
-            `SELECT booking_id, purpose, start_time, end_time 
-             FROM public."Booking" 
-             WHERE room_id = $1 
-             AND date = $2 
-             AND status NOT IN ('cancelled', 'rejected') 
-             AND (start_time < $4 AND end_time > $3)`, 
-            [roomId, scheduleDate, startTime, endTime]
-        );
-
-        if (bookingConflictCheck.rows.length > 0) {
-            const conflict = bookingConflictCheck.rows[0];
-            throw new Error(
-                `เวลาชนกับการจอง ID: ${conflict.booking_id} (${conflict.purpose} ${conflict.start_time}-${conflict.end_time})`
-            );
-        }
-
-        // --- ถ้าไม่ชนใครเลย ก็ทำต่อ ---
         
-        // ✅✅✅ แก้ไขจุดที่ 2: ลบ Loop ซ้อน Loop ออก และ push ใส่ validData ตรงๆ
-        validData.push({
-            // สร้าง ID จำลองส่งไปให้ Frontend ดูด้วยก็ได้ (Optional)
-            temp_id: index + 1, 
-            room_id: roomId,
-            subject_name: subjectName,
-            teacher_name: teacherName,
-            start_time: startTime,
-            end_time: endTime,
-            semester_id: semesterId,
-            date: scheduleDate
-        });
-        
-        successCount++;
+        // วันที่เริ่มต้น (First Date)
+        const firstDateRaw = formatExcelData(row.date, 'date'); // ต้องได้ Format 'YYYY-MM-DD'
 
-      } catch (err) {
-        console.error(`❌ Error row ${index + 2}:`, err.message);
-
-        let errorType = 'UNKNOWN';
-        if (err.message.includes('ชนกับ')) {
-            errorType = 'COLLISION'; 
-        } else if (err.message.includes('ข้อมูลไม่ครบ')) {
-            errorType = 'INVALID_DATA';
+        // Validation ตรวจสอบ ข้อมูล room id, semester id, first dae raw ว่ามีข้อมูลไหมในแต่ละ rows
+        if (!roomId || !semesterId || !firstDateRaw) {
+             errors.push({ 
+                row: index + 2, // ไปที่ row ทัดไป
+                room: roomId || 'ไม่ระบุ', 
+                type: 'INVALID_DATA',
+                message: 'ข้อมูลไม่ครบ (ต้องมี room_id, semester_id, date)' 
+            });
+            continue; // ข้ามแถวนี้ไปเลยถ้าข้อมูลหลักไม่ครบ
         }
 
-        errors.push({ 
-          row: index + 2, 
-          room: row.room_id || 'ไม่ระบุ', 
-          type: errorType,
-          message: err.message 
-        });
-      }
-    }
+        // แปลง firstDateRaw เป็น Object Date เพื่อคำนวณ
+        const baseDateObj = new Date(firstDateRaw); // สร้าง วันเริ่มต้นก่อนจะวลลูป
 
-    // ✅✅✅ จุดที่ 3: ส่ง Response (ตอนนี้รู้จัก validData และ errors แล้ว)
+        // ✅ Loop 2: วนลูป 15 สัปดาห์ (Week 1 - Week 15)
+        for (let week = 0; week < 15; week++) {
+            try {
+                // คำนวณวันที่ของสัปดาห์ที่ week
+                // สูตร: วันที่ฐาน + (จำนวนสัปดาห์ * 7 วัน)
+                const targetDateObj = new Date(baseDateObj);
+                targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
+                // แปลงกลับเป็น String 'YYYY-MM-DD' เพื่อใช้กับ Database
+                const targetDate = targetDateObj.toISOString().split('T')[0];
+
+                // 🛑 CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
+                const scheduleConflictCheck = await pool.query(
+                    `SELECT schedule_id, subject_name, start_time, end_time
+                     FROM public."Schedules"
+                     WHERE room_id = $1
+                     AND date = $2
+                     AND (start_time < $4 AND end_time > $3)`,
+                    [roomId, targetDate, startTime, endTime]
+                );
+
+                if (scheduleConflictCheck.rows.length > 0) {
+                    const conflict = scheduleConflictCheck.rows[0];
+                    throw new Error(
+                        `เวลาชนกับวิชาที่มีอยู่แล้ว: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
+                    );
+                }
+
+                // 🛑 CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
+                const bookingConflictCheck = await pool.query(
+                    `SELECT booking_id, purpose, start_time, end_time 
+                     FROM public."Booking" 
+                     WHERE room_id = $1 
+                     AND date = $2 
+                     AND status NOT IN ('cancelled', 'rejected') 
+                     AND (start_time < $4 AND end_time > $3)`, 
+                    [roomId, targetDate, startTime, endTime]
+                );
+
+                if (bookingConflictCheck.rows.length > 0) {
+                    const conflict = bookingConflictCheck.rows[0];
+                    throw new Error(
+                        `เวลาชนกับการจอง ID: ${conflict.booking_id} (${conflict.purpose} ${conflict.start_time}-${conflict.end_time})`
+                    );
+                }
+
+                // --- ถ้าไม่ชนใครเลย ---
+                validData.push({
+                    temp_id: `${index + 1}_w${week + 1}`, // สร้าง ID ปลอม เช่น 1_w1, 1_w2
+                    week_number: week + 1, // บอกว่าเป็นสัปดาห์ที่เท่าไหร่
+                    room_id: roomId,
+                    subject_name: subjectName,
+                    teacher_name: teacherName,
+                    start_time: startTime,
+                    end_time: endTime,
+                    semester_id: semesterId,
+                    teacher_id: teacherId,
+                    date: targetDate // ใช้วันที่ที่คำนวณใหม่
+                });
+
+                successCount++;
+
+            } catch (err) {
+                // เก็บ Error โดยระบุด้วยว่าเป็นของสัปดาห์ไหน
+                // วันที่ error อาจจะ format ให้สวยงามหน่อย
+                const targetDateObj = new Date(baseDateObj);
+                targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
+                const dateStr = targetDateObj.toISOString().split('T')[0];
+
+                let errorType = 'UNKNOWN';
+                if (err.message.includes('ชนกับ')) errorType = 'COLLISION';
+                else if (err.message.includes('ข้อมูลไม่ครบ')) errorType = 'INVALID_DATA';
+
+                errors.push({ 
+                    row: index + 2, 
+                    week: week + 1,
+                    date: dateStr,
+                    room: roomId, 
+                    type: errorType,
+                    message: `(Week ${week + 1}: ${dateStr}) ${err.message}` 
+                });
+            }
+        } // End Inner Loop (15 Weeks)
+    } // End Outer Loop (Excel Rows)
+
+    // ส่ง Response
     res.json({
-        message: 'ตรวจสอบไฟล์เรียบร้อย (ยังไม่ได้บันทึก)',
-        total: importedData.length,
+        message: 'ตรวจสอบไฟล์เรียบร้อย (Generate 15 สัปดาห์)',
+        total_rows_excel: importedData.length,
+        total_generated_slots: successCount + errors.length, // จำนวนทั้งหมดที่พยายามสร้าง
         valid_count: validData.length,
         error_count: errors.length,
         previewData: validData, 
@@ -231,6 +261,8 @@ export const importClassSchedules = async (req, res) => {
   }
 };
 
+// /schedules/confirm
+// สาเหตุการที่ต้องมีการ confirm เพราะก่อนที่จะเอาข้อมูลลง database ต้องตรวจดูว่ามีการชนกับข้อมูลการจองอื่นๆไหม รับไๆด้ไหมก่อนจะเอาเข้าฐานข้อมูล
 export const confirmSchedules = async (req, res) => {
   // รับข้อมูลเป็น Array จาก Frontend
   // body: { schedules: [ { room_id: '...', ... }, { ... } ] }
@@ -283,6 +315,7 @@ export const confirmSchedules = async (req, res) => {
   }
 };
 
+// เมื่อมีการ confirm จะนำข้อมูลส่วนอื่นที่ไม่ซ้ำนำเข้า database
 const insertScheduleToDB = async (client, data, currentIdNum) => {
   // Generate ID ใหม่ (รับค่าตัวเลขล่าสุดมา + 1)
   const nextIdNum = currentIdNum + 1;
@@ -290,8 +323,8 @@ const insertScheduleToDB = async (client, data, currentIdNum) => {
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date, teacher_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       nextScheduleId,
       data.room_id,
@@ -300,7 +333,8 @@ const insertScheduleToDB = async (client, data, currentIdNum) => {
       data.start_time,
       data.end_time,
       data.semester_id,
-      data.date
+      data.date,
+      data.teacher_id
     ]
   );
 
@@ -369,6 +403,65 @@ export const getSchedule = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงตารางเรียน' });
   }
 };
+
+
+export const getAllSchedules = async (req, res) => {
+  try {
+    const { semester_id } = req.query; 
+
+    let sql = `
+      SELECT 
+        schedule_id, 
+        room_id,
+        subject_name, 
+        teacher_name, 
+        start_time, 
+        end_time, 
+        semester_id, 
+        date,
+        temporarily_closed, 
+        teacher_id
+      FROM public."Schedules"
+    `;
+    
+    const params = [];
+
+    if (semester_id) {
+      sql += ` WHERE semester_id = $1`;
+      params.push(semester_id);
+    }
+
+    // เรียงลำดับ: วันที่ -> เวลาเริ่ม -> ห้อง
+    sql += ` ORDER BY date ASC, start_time ASC, room_id ASC`;
+
+    const result = await pool.query(sql, params);
+
+    // จัด Format ข้อมูล (Logic เดียวกับ getSchedule เดิม)
+    const formattedSchedules = result.rows.map(row => {
+      const isClosed = row.temporarily_closed === true; 
+
+      return {
+        ...row,
+        start_time: String(row.start_time).substring(0, 5),
+        end_time: String(row.end_time).substring(0, 5),
+        temporarily_closed: isClosed,
+        status_text: isClosed ? 'งดคลาส' : 'เรียนปกติ'
+      };
+    });
+
+    res.json({
+      message: 'ดึงข้อมูลตารางเรียนทั้งหมดสำเร็จ',
+      semester: semester_id || 'All',
+      total: result.rowCount,
+      schedules: formattedSchedules
+    });
+
+  } catch (error) {
+    console.error('Get All Schedules Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลทั้งหมด' });
+  }
+};
+
 // // PATCH /schedules/:id/status
 // ฟังก์ชันเปลี่ยนสถานะงดใช้ห้อง 
 export const updateScheduleStatus = async (req, res) => {
@@ -434,3 +527,5 @@ export const updateScheduleStatus = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการอัปเดตสถานะ' });
   }
 };
+
+

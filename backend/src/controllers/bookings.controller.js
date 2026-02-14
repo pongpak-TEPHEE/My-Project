@@ -160,35 +160,68 @@ export const getRoomStatus = async (req, res) => {
 // /bookings/teacher
 // สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
-
   const { room_id, purpose, date, start_time, end_time } = req.body;
   const teacher_id = req.user.user_id; 
 
   try {
-
-    // 0. ดักการจองย้อนหลัง
+    // 0. ตรวจสอบเรื่องเวลา (ห้ามจองย้อนหลัง และ ต้องล่วงหน้า 3 วัน)
+    // เตรียมตัวแปรเวลาปัจจุบัน และ เวลาที่ขอจอง
     const now = new Date();
-    const bookingStart = new Date(`${date}T${start_time}`);
+    const bookingDate = new Date(date); // วันที่ที่ต้องการจอง (00:00 น.)
+    
+    // Set เวลาให้เป็น 00:00:00 ทั้งคู่ เพื่อเปรียบเทียบเฉพาะ "วัน"
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    bookingDate.setHours(0, 0, 0, 0);
 
-    if (bookingStart < now) {
+    // 0.1 ดักการจองย้อนหลัง (ถ้าวันที่จอง น้อยกว่า วันนี้)
+    if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
     }
 
-    // 1. ตรวจสอบว่าห้องว่างไหม? 
+    // 0.2 กฎการจองล่วงหน้า 3 วัน 
+    // วิธีคิด: วันที่จอง - วันนี้ ต้อง >= 3 วัน
+    // (1 วัน มี 86,400,000 มิลลิวินาที)
+    const diffTime = bookingDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 3) {
+       // คำนวณวันที่เร็วที่สุดที่จองได้เพื่อบอก User
+       const minDate = new Date(today);
+       minDate.setDate(today.getDate() + 3);
+       const minDateString = minDate.toLocaleDateString('th-TH'); // แปลงเป็นรูปแบบไทย
+
+       return res.status(400).json({ 
+         message: `ต้องจองล่วงหน้าอย่างน้อย 3 วัน (จองได้เร็วที่สุดตั้งแต่วันที่ ${minDateString} เป็นต้นไป)`,
+         allowed_date: minDate
+       });
+    }
+
+    // ถ้าผ่านกฎวันที่ ก็ไปเช็คเวลาต่อ
+    const bookingStart = new Date(`${date}T${start_time}`);
+    if (bookingStart < now) { 
+        // กรณีจองวันนี้ (ซึ่งผ่านกฎ 3 วันไม่ได้อยู่แล้ว แต่ใส่กันเหนียวไว้) 
+        // หรือกรณีเวลาใน bookingStart มันผ่านไปแล้วจริงๆ
+        return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
+    }
+
+    // -----------------------------------------------------------------------
+    // 1. ตรวจสอบว่าห้องว่างไหม? (เหมือนเดิม)
+    // -----------------------------------------------------------------------
+
     // 🛑 DANGER ZONE 1: เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
        FROM public."Schedules"
        WHERE room_id = $1
        AND date = $2
-       AND (start_time < $4 AND end_time > $3)  -- ช่วงเวลาชนกัน
-       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, // 👈 เพิ่มบรรทัดนี้: เฉพาะวิชาที่ไม่ได้งดสอน
+       AND (start_time < $4 AND end_time > $3)
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`,
       [room_id, date, start_time, end_time]
     );
 
     if (scheduleConflict.rows.length > 0) {
       const conflict = scheduleConflict.rows[0];
-      // ส่ง status 409 (Conflict) กลับไป
       return res.status(409).json({ 
         message: `ไม่สามารถจองได้ เนื่องจากห้องนี้มีเรียนวิชา: ${conflict.subject_name}`,
         conflict_type: 'schedule',
@@ -197,63 +230,48 @@ export const createBookingForTeacher = async (req, res) => {
     }
 
     // 🛑 DANGER ZONE 2: เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
-
     const bookingConflict = await pool.query(
-    `SELECT booking_id, status FROM public."Booking"
-     WHERE room_id = $1 
-     AND date = $2 
-     AND (start_time < $4 AND end_time > $3)
-     AND status IN ('approved', 'pending')`,
-    [room_id, date, start_time, end_time] 
-);
+      `SELECT booking_id, status FROM public."Booking"
+       WHERE room_id = $1 
+       AND date = $2 
+       AND (start_time < $4 AND end_time > $3)
+       AND status IN ('approved', 'pending')`,
+      [room_id, date, start_time, end_time] 
+    );
     
-    // ในตัวแปร existingBooking คือถ้ามีการขอจองมา 1 คำขอ ก็จะไปถาม database ว่ามีใครที่มีสถาณะ approved แล้วมีช่วงเวลาตรงกันบ้างถ้ามีจะถูกเก็บใน existingBooking ทำให้มี rows มากกว่า 1
     if (bookingConflict.rows.length > 0) {
-    const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
+      const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
 
-    // ถ้าเข้าเงือนไข แสดงว่าข้อมูลใน existingBooking มีสถาณะ approved 
-    if (approvedBooking) {
-        // ถ้าเจอ Approved -> จบเลย ห้องไม่ว่างแน่นอน
+      if (approvedBooking) {
         return res.status(409).json({ 
             message: 'ไม่สามารถจองได้ เนื่องจากช่วงเวลานี้ได้รับการอนุมัติแล้ว',
             status: 'approved' 
         });
-    } 
-    
-    // แต่ถ้าไม่ใช้ก็แสดงว่าเป็น pending 
-    return res.status(400).json({ 
+      } 
+      
+      return res.status(400).json({ 
         message: 'ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาเลือกเวลาอื่น)',
         status: 'pending'
-    });
-}
+      });
+    }
 
-    // 2. สร้าง Booking ID แบบเรียงลำดับ (b0001, b0002, ...)
+    // -----------------------------------------------------------------------
+    // 2. สร้าง Booking ID แบบเรียงลำดับ (เหมือนเดิม)
+    // -----------------------------------------------------------------------
+    let newBookingId = 'b0001';
 
-    let newBookingId = 'b0001'; // ค่าเริ่มต้น (ถ้ายังไม่มีใครจองเลย)
-
-    // ดึง booking_id ล่าสุดออกมา (เรียงจากมากไปน้อย แล้วเอามาแค่ 1 ตัว)
     const latestBookingResult = await pool.query(
       `SELECT booking_id FROM public."Booking" ORDER BY booking_id DESC LIMIT 1`
     );
 
     if (latestBookingResult.rows.length > 0) {
-      const latestId = latestBookingResult.rows[0].booking_id; // เช่น 'b0015'
-      
-      // ตัดตัว 'b' ออก (substring(1)) แล้วแปลงเป็นตัวเลข
+      const latestId = latestBookingResult.rows[0].booking_id;
       const currentNumber = parseInt(latestId.substring(1)); 
-      
-      // บวก 1
       const nextNumber = currentNumber + 1; 
-
-      // แปลงกลับเป็น String และเติม 0 ข้างหน้าให้ครบ 4 หลัก
-      // เช่น 16 -> '0016' -> 'b0016'
       newBookingId = 'b' + nextNumber.toString().padStart(4, '0');
     }
 
-    console.log(`new booking id = ${newBookingId}`);
-
-
-    // 3. บันทึกข้อมูล (ใช้ newBookingId ที่เราคำนวณมา)
+    // 3. บันทึกข้อมูล
     await pool.query(
       `INSERT INTO public."Booking" 
        (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status)
@@ -261,10 +279,10 @@ export const createBookingForTeacher = async (req, res) => {
       [newBookingId, room_id, teacher_id, purpose, date, start_time, end_time]
     );
 
-    // 4. ส่ง response กลับ
+    // 4. ส่ง response
     res.status(201).json({ 
         message: 'ส่งคำขอจองสำเร็จ', 
-        bookingId: newBookingId // ส่ง ID ใหม่กลับไป
+        bookingId: newBookingId 
     });
 
   } catch (error) {
@@ -277,35 +295,52 @@ export const createBookingForTeacher = async (req, res) => {
 // สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForStaff = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
+  
+  // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (teacher_id) และผู้อนุมัติ (approved_by)
+  const staff_id = req.user.user_id; 
 
-  const teacher_id = req.user.user_id; 
-  // console.log("teacher id : ", teacher_id);
   try {
-
-    // 0. ดักการจองย้อนหลัง
-
+    // -----------------------------------------------------------------------
+    // 0. ตรวจสอบเรื่องเวลา (Standardization)
+    // -----------------------------------------------------------------------
     const now = new Date();
+    const bookingDate = new Date(date);
     const bookingStart = new Date(`${date}T${start_time}`);
 
-    if (bookingStart < now) {
+    // Set เวลาให้เป็น 00:00:00 เพื่อเทียบแค่วันที่
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    bookingDate.setHours(0, 0, 0, 0);
+
+    // 0.1 ห้ามจองย้อนหลัง (อดีต)
+    if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
     }
+    
+    // เช็คเวลาละเอียด (กรณีจองวันนี้ แต่เวลาผ่านไปแล้ว)
+    if (bookingStart < now) {
+       return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
+    }
 
-    // 1. ตรวจสอบว่าห้องว่างไหม? 
-    // 🛑 DANGER ZONE 1: เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
+    // *หมายเหตุ: สำหรับ Staff เราตัดกฎ "จองล่วงหน้า 3 วัน" ออก 
+    // เพื่อให้ Staff สามารถจองห้องใช้งานด่วนได้ (Emergency Booking)
+
+
+    // 1. ตรวจสอบว่าห้องว่างไหม?
+
+    // 🛑 CHECk 1: เช็ค "ตารางเรียน (Schedule)" (รวมถึงวิชาที่งดสอน)
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
        FROM public."Schedules"
        WHERE room_id = $1
        AND date = $2
-       AND (start_time < $4 AND end_time > $3)  -- ช่วงเวลาชนกัน
-       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, // 👈 เพิ่มบรรทัดนี้: เฉพาะวิชาที่ไม่ได้งดสอน
+       AND (start_time < $4 AND end_time > $3)
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, // ✅ เช็ค status งดสอน
       [room_id, date, start_time, end_time]
     );
 
     if (scheduleConflict.rows.length > 0) {
       const conflict = scheduleConflict.rows[0];
-      // ส่ง status 409 (Conflict) กลับไป
       return res.status(409).json({ 
         message: `ไม่สามารถจองได้ เนื่องจากห้องนี้มีเรียนวิชา: ${conflict.subject_name}`,
         conflict_type: 'schedule',
@@ -313,83 +348,72 @@ export const createBookingForStaff = async (req, res) => {
       });
     }
 
-    // 🛑 DANGER ZONE 2: เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
-
+    // 🛑 CHECK 2: เช็ค "การจองของคนอื่น (Booking)"
     const bookingConflict = await pool.query(
-    `SELECT booking_id, status FROM public."Booking"
-     WHERE room_id = $1 
-     AND date = $2 
-     AND (start_time < $4 AND end_time > $3)
-     AND status IN ('approved', 'pending')`,
-    [room_id, date, start_time, end_time] 
-);
+      `SELECT booking_id, status FROM public."Booking"
+       WHERE room_id = $1 
+       AND date = $2 
+       AND (start_time < $4 AND end_time > $3)
+       AND status IN ('approved', 'pending')`,
+      [room_id, date, start_time, end_time] 
+    );
     
-    // ในตัวแปร existingBooking คือถ้ามีการขอจองมา 1 คำขอ ก็จะไปถาม database ว่ามีใครที่มีสถาณะ approved แล้วมีช่วงเวลาตรงกันบ้างถ้ามีจะถูกเก็บใน existingBooking ทำให้มี rows มากกว่า 1
     if (bookingConflict.rows.length > 0) {
-    const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
+      const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
 
-
-    // ถ้าเข้าเงือนไข แสดงว่าข้อมูลใน existingBooking มีสถาณะ approved 
-    if (approvedBooking) {
-        // ถ้าเจอ Approved -> จบเลย ห้องไม่ว่างแน่นอน
+      // ถ้ามีคนได้ Approved แล้ว -> จองไม่ได้แน่นอน
+      if (approvedBooking) {
         return res.status(409).json({ 
             message: 'ไม่สามารถจองได้ เนื่องจากช่วงเวลานี้ได้รับการอนุมัติแล้ว',
             status: 'approved' 
         });
-    } 
-    
-    // แต่ถ้าไม่ใช้ก็แสดงว่าเป็น pending 
-    return res.status(400).json({ 
-        message: 'ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาเลือกเวลาอื่น)',
+      } 
+      
+      // ถ้ามีคน Pending อยู่ -> Staff มีสิทธิ์เลือกว่าจะทำยังไง
+      // แต่ในที่นี้เราจะ Block ไว้ก่อนเพื่อกันการจองซ้อน (หรือคุณจะยอมให้ Staff แทรกก็ได้)
+      return res.status(400).json({ 
+        message: 'ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาตรวจสอบรายการ Pending ก่อน)',
         status: 'pending'
-    });
-}
+      });
+    }
 
-    // 2. สร้าง Booking ID แบบเรียงลำดับ (b0001, b0002, ...)
+    // -----------------------------------------------------------------------
+    // 2. สร้าง Booking ID (Logic เดิม)
+    // -----------------------------------------------------------------------
+    let newBookingId = 'b0001';
 
-    let newBookingId = 'b0001'; // ค่าเริ่มต้น (ถ้ายังไม่มีใครจองเลย)
-
-    // ดึง booking_id ล่าสุดออกมา (เรียงจากมากไปน้อย แล้วเอามาแค่ 1 ตัว)
     const latestBookingResult = await pool.query(
       `SELECT booking_id FROM public."Booking" ORDER BY booking_id DESC LIMIT 1`
     );
 
     if (latestBookingResult.rows.length > 0) {
-      const latestId = latestBookingResult.rows[0].booking_id; // เช่น 'b0015'
-      
-      // ตัดตัว 'b' ออก (substring(1)) แล้วแปลงเป็นตัวเลข
+      const latestId = latestBookingResult.rows[0].booking_id;
       const currentNumber = parseInt(latestId.substring(1)); 
-      
-      // บวก 1
       const nextNumber = currentNumber + 1; 
-
-      // แปลงกลับเป็น String และเติม 0 ข้างหน้าให้ครบ 4 หลัก
-      // เช่น 16 -> '0016' -> 'b0016'
       newBookingId = 'b' + nextNumber.toString().padStart(4, '0');
     }
 
-    console.log(`new booking id = ${newBookingId}`);
+    console.log(`New Booking ID (Staff): ${newBookingId}`);
 
-    const name = req.user.name;
-    console.log("name : ", name);
-
-
-    // 3. บันทึกข้อมูล (ใช้ newBookingId ที่เราคำนวณมา)
+    // -----------------------------------------------------------------------
+    // 3. บันทึกข้อมูล (Status = approved)
+    // -----------------------------------------------------------------------
     await pool.query(
       `INSERT INTO public."Booking" 
        (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status, approved_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8)`,
-      [newBookingId, room_id, teacher_id, purpose, date, start_time, end_time, req.user.user_id]
+      [newBookingId, room_id, staff_id, purpose, date, start_time, end_time, staff_id]
     );
 
-    // 4. ส่ง response กลับ
+    // 4. ส่ง response
     res.status(201).json({ 
-        message: 'ส่งคำขอจองสำเร็จ', 
-        bookingId: newBookingId // ส่ง ID ใหม่กลับไป
+        message: 'จองห้องสำเร็จ (อนุมัติทันที)', 
+        bookingId: newBookingId,
+        status: 'approved'
     });
 
   } catch (error) {
-    console.error('Booking Error:', error);
+    console.error('Staff Booking Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการจอง' });
   }
 };
@@ -465,9 +489,9 @@ export const updateBookingStatus = async (req, res) => {
   }
 };
 
-// /bookings/allBooking/:roomId
+// /bookings/allBookingSpecific/:roomId
 // สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา เพื่อใช้ในปฐิทิน
-export const getAllBooking =  async (req, res) => {
+export const getAllBookingSpecific =  async (req, res) => {
     const { roomId } = req.params;
     const { status } = req.query;
 
@@ -486,6 +510,39 @@ export const getAllBooking =  async (req, res) => {
             WHERE b.room_id = $1 AND b.status = $2
         `;
         const result = await pool.query(query, [roomId, status || 'approved']);
+        
+        res.json(result.rows); 
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+
+// /bookings/allBooking
+// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในทุกห้อง
+export const getAllBooking = async (req, res) => {
+    const { status } = req.query; 
+    try {
+        const query = `
+            SELECT 
+                b.booking_id,
+                b.room_id, 
+                b.date,
+                b.start_time,
+                b.end_time,
+                b.purpose,
+                b.status,
+                u.name as teacher_name,
+                u.surname as teacher_surname
+            FROM public."Booking" b
+            JOIN public."Users" u ON b.teacher_id = u.user_id
+            WHERE b.status = $1
+            ORDER BY b.date DESC, b.start_time ASC
+        `;
+        
+        // 2. ส่งแค่ parameter ตัวเดียว คือ status
+        const result = await pool.query(query, [status || 'approved']);
         
         res.json(result.rows); 
     } catch (err) {

@@ -7,12 +7,13 @@ import {
     updateBookingStatus, 
     getApprovedBookings, 
     getRejectedBookings, 
+    getAllBookingSpecific,
     getAllBooking,
     getMyBookings,
     cancelBooking,
-    editBooking,
-    getMyActiveBookings,
-    getMyBookingHistory
+    editBooking
+    // getMyActiveBookings,
+    // getMyBookingHistory
  } 
  from '../controllers/bookings.controller.js';
  
@@ -39,10 +40,12 @@ router.get('/rejected', authenticateToken, authorizeRole('teacher', 'staff'), ge
 // :id คือตัวแปรที่จะรับ booking_id (เช่น /bookings/b123/status)
 router.put('/:id/status', authenticateToken, authorizeRole('staff'), updateBookingStatus);
 
+// เป็นการดึงรายการทั้งหมดของทุกห้องที่มี status approved
+router.get('/allBooking', getAllBooking);
 
-router.get('/:id', authenticateToken, getRoomStatus)
+// เป็นการดึงรายการทั้งหมดของห้องนั้นๆ ที่มี status approved
+router.get('/allBookingSpecific/:roomId', getAllBookingSpecific);
 
-router.get('/allBooking/:roomId', getAllBooking);
 
 // API ดูประวัติการจองของฉัน
 // GET http://localhost:3000/bookings/my-history
@@ -55,10 +58,13 @@ router.put('/:id/cancel', authenticateToken, cancelBooking);
 
 router.put('/:id', authenticateToken, authorizeRole('teacher', 'staff'), editBooking);
 
+// ใช้เมื่อเราแสกน QR-Code จะเด้งไปหมายเลขห้องทีอยู่ใน QR code
+router.get('/:id', authenticateToken, getRoomStatus)
+
 // ดึงรายการที่เวลาที่จองยังอยู่ในอนาคต และเป็น status approved, padding
-router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), getMyActiveBookings);
+// router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), getMyActiveBookings);
 
 // ดึงรายการที่เวลาที่จองเป็นอดีตไปแล้ว และเป็น status approved, rejected, cancel
-router.get('/my-bookings/history', authenticateToken, authorizeRole('teacher'), getMyBookingHistory);
+// router.get('/my-bookings/history', authenticateToken, authorizeRole('teacher'), getMyBookingHistory);
 
 export default router;
