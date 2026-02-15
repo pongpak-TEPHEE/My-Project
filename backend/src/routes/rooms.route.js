@@ -8,6 +8,7 @@ import {
     createRoom, 
     getRoomQRCode,
     deleteRoom,
+    editRoom,
     getAllRoomNoActive
 } 
 from '../controllers/rooms.controller.js';
@@ -23,7 +24,7 @@ router.get('/:room_id/schedule', getRoomScheduleToday);
 
 router.get('/:id', getRoomDetail);
 
-// ดึงห้องทั้งหมด
+// ดึงรายชื่อห้องทั้งหมด (สำหรับแสดงในหน้าเลือกห้อง) ต้องเป็นสภาณะ ไม่งดใช้ห้อง
 router.get('/', getAllRoom);
 
 // ดึงห้องที่ งดให้บริการ
@@ -32,8 +33,11 @@ router.get('/noActive', getAllRoomNoActive);
 // การเพิ่มห้อง staff สามารถทำได้เท่านั้น
 router.post('/', authenticateToken, authorizeRole('staff'), createRoom);
 
-
+// เปลี่ยน status is_active = false เพื่อ
 router.patch('/:room_id/delete', authenticateToken, authorizeRole('staff'), deleteRoom);
+
+// แก้ไขข้อมูลในห้อง
+router.put('/:room_id/edit', authenticateToken, authorizeRole('staff'), editRoom);
 
 
 export default router;

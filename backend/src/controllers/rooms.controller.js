@@ -120,7 +120,7 @@ export const getAllRoom = async (req, res) => {
         capacity, 
         location, 
         room_characteristics,
-        is_active  -- 👈 1. ต้อง SELECT ตัวนี้ออกมาด้วย สำคัญมาก!
+        is_active  -- 1. ต้อง SELECT ตัวนี้ออกมาด้วย สำคัญมาก!
       FROM public."Rooms"
     `;
     
@@ -153,26 +153,33 @@ export const getAllRoom = async (req, res) => {
   }
 };
 
-/* เป็น function ที่เราจะดึงห้องที่ไม่เปิดทำการ (is_active = false) 
+/* เป็น function ที่เราจะดึงห้องที่ไม่เปิดทำการ (repair = false) 
 ### res.json มีการส่ง rowConut เอาไว้อยู่แล้ว ### */
 export const getAllRoomNoActive = async (req, res) => {
   try {
-    // ดึงเฉพาะห้องที่ is_active = false
+    // ดึงเฉพาะห้องที่ repair เป็น FALSE หรือ NULL (คือห้องที่เสีย หรือ ไม่พร้อม)
     const result = await pool.query(
-      `SELECT room_id, room_type, location, capacity, room_characteristics 
+      `SELECT 
+         room_id, 
+         room_type, 
+         location, 
+         capacity, 
+         room_characteristics,
+         repair  -- ดึงค่า repair ออกมาด้วยเผื่อ Frontend
        FROM public."Rooms" 
-       WHERE is_active = FALSE
+       WHERE repair IS FALSE OR repair IS NULL
        ORDER BY room_id ASC`
     );
 
     // ส่งกลับไปทั้ง "จำนวน (count)" และ "รายการห้อง (rooms)"
     res.json({
+      message: 'ดึงข้อมูลห้องที่ปิดปรับปรุง (Repair) สำเร็จ',
       count: result.rowCount,
       rooms: result.rows
     });
 
   } catch (error) {
-    console.error('Get Inactive Rooms Error:', error);
+    console.error('Get Repair Rooms Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลห้องที่ปิดใช้งาน' });
   }
 };
@@ -232,7 +239,7 @@ export const getRoomDetail = async (req, res) => {
   }
 };
 
-// (POST) /rooms
+// (POST) rooms/
 // เพิ่มห้องใหม่
 export const createRoom = async (req, res) => {
   // รับค่าทั้งหมดจาก Body ทั้งข้อมูลห้อง และ ข้อมูลอุปกรณ์
@@ -301,6 +308,7 @@ export const createRoom = async (req, res) => {
   }
 };
 
+// rooms/:room_id/delete
 /* ไม่ใช้การลดออกจาก database แต่เป็นการปรับให้อยู่ใน database !!!!!!!!!!!!!!!! 
 (ข้อเสียคือ มีนจะค้างอยูาใน database ตลอดไป ควรหา cron 
 ที่คอยสังเกตุการณ์ว่าตอนนี้ไม่มีการอ้างอิงห้องนี้แล้วจากนั้นค่อยเอาออกจาก database) */
@@ -345,6 +353,120 @@ export const deleteRoom = async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Soft Delete Room Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการลบห้อง' });
+  } finally {
+    client.release();
+  }
+};
+
+// rooms/:room_id/edit
+// เป็นการ แก้ไขห้อง 
+export const editRoom = async (req, res) => {
+  const { room_id } = req.params;
+
+  // 1. รับค่า is_active เพิ่มเข้ามาจาก Body
+  const { 
+    room_type, 
+    location, 
+    capacity, 
+    room_characteristics, 
+    repair, 
+    is_active, // 👈 รับค่าสถานะ (true/false)
+    equipments 
+  } = req.body;
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN'); // เริ่ม Transaction
+
+    // -----------------------------------------------------
+    // 🛡️ Logic พิเศษ: ถ้าสั่งปิดห้อง (is_active = false)
+    // -----------------------------------------------------
+    // ต้องเคลียร์การจองในอนาคตออกให้หมด เพื่อไม่ให้ข้อมูลค้าง
+    if (is_active === false) {
+       await client.query(
+         `UPDATE public."Booking"
+          SET status = 'cancelled'
+          WHERE room_id = $1 
+          AND date >= CURRENT_DATE 
+          AND status IN ('pending', 'approved')`,
+         [room_id]
+       );
+    }
+
+    // -----------------------------------------------------
+    // STEP 1: อัปเดตข้อมูลห้อง (รวม is_active)
+    // -----------------------------------------------------
+    const updateRoomResult = await client.query(
+      `UPDATE public."Rooms" 
+       SET room_type = $1, 
+           location = $2, 
+           capacity = $3, 
+           room_characteristics = $4,
+           repair = $5,
+           is_active = $6  -- 👈 อัปเดตสถานะตรงนี้
+       WHERE room_id = $7`,
+      [
+        room_type, 
+        location, 
+        capacity, 
+        room_characteristics, 
+        repair, 
+        is_active, // ส่งค่า boolean ไป
+        room_id
+      ]
+    );
+
+    if (updateRoomResult.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'ไม่พบห้องที่ต้องการแก้ไข' });
+    }
+
+    // -----------------------------------------------------
+    // STEP 2: อัปเดตอุปกรณ์ (เหมือนเดิม)
+    // -----------------------------------------------------
+    if (equipments) {
+      // 2.1 ลอง Update ก่อน
+      const updateEqResult = await client.query(
+        `UPDATE public."Equipment"
+         SET projector = $1, microphone = $2, computer = $3, whiteboard = $4, type_of_computer = $5
+         WHERE room_id = $6`,
+        [
+          equipments.projector || 0,
+          equipments.microphone || 0,
+          equipments.computer || 0,
+          equipments.whiteboard || 0,
+          equipments.type_of_computer || '-',
+          room_id
+        ]
+      );
+
+      // 2.2 ถ้าไม่เจอ (ห้องเก่าอาจจะยังไม่มีอุปกรณ์) -> ให้ Insert ใหม่
+      if (updateEqResult.rowCount === 0) {
+        const equipment_id = `eq-${room_id}`;
+        await client.query(
+          `INSERT INTO public."Equipment"
+           (equipment_id, room_id, projector, microphone, computer, whiteboard, type_of_computer)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            equipment_id, room_id,
+            equipments.projector || 0,
+            equipments.microphone || 0,
+            equipments.computer || 0,
+            equipments.whiteboard || 0,
+            equipments.type_of_computer || '-'
+          ]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ message: 'แก้ไขข้อมูลห้องและสถานะสำเร็จ' });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Edit Room Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูลห้อง' });
   } finally {
     client.release();
   }
