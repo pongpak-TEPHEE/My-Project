@@ -11,9 +11,9 @@ import {
     getAllBooking,
     getMyBookings,
     cancelBooking,
-    editBooking
-    // getMyActiveBookings,
-    // getMyBookingHistory
+    editBooking,
+    getMyActiveBookings,
+    getMyBookingHistory
  } 
  from '../controllers/bookings.controller.js';
  
@@ -46,7 +46,6 @@ router.get('/allBooking', getAllBooking);
 // เป็นการดึงรายการทั้งหมดของห้องนั้นๆ ที่มี status approved
 router.get('/allBookingSpecific/:roomId', getAllBookingSpecific);
 
-
 // API ดูประวัติการจองของฉัน
 // GET http://localhost:3000/bookings/my-history
 // ⚠️ ต้องวางไว้ "ก่อน" /:id นะครับ ไม่งั้นมันจะนึกว่า "my-history" คือ id
@@ -62,9 +61,9 @@ router.put('/:id', authenticateToken, authorizeRole('teacher', 'staff'), editBoo
 router.get('/:id', authenticateToken, getRoomStatus)
 
 // ดึงรายการที่เวลาที่จองยังอยู่ในอนาคต และเป็น status approved, padding
-// router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), getMyActiveBookings);
+router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), getMyActiveBookings);
 
 // ดึงรายการที่เวลาที่จองเป็นอดีตไปแล้ว และเป็น status approved, rejected, cancel
-// router.get('/my-bookings/history', authenticateToken, authorizeRole('teacher'), getMyBookingHistory);
+router.get('/my-bookings/history', authenticateToken, authorizeRole('teacher'), getMyBookingHistory);
 
 export default router;

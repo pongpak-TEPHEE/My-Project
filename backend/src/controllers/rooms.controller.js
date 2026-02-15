@@ -8,75 +8,172 @@ export const getRoomScheduleToday = async (req, res) => {
   const { room_id } = req.params;
 
   try {
-    // 1. ดึงข้อมูลห้องก่อน (จะได้เอาชื่อห้องไปโชว์หัวเว็บ)
-    const roomInfo = await pool.query(
-      `SELECT room_name, capacity, location FROM public."Rooms" WHERE room_id = $1`,
+
+    // 1. ดึงข้อมูลห้อง และเช็ค is_active
+    const roomResult = await pool.query(
+      `SELECT room_id, room_type, location, capacity, is_active 
+       FROM public."Rooms" 
+       WHERE room_id = $1`,
       [room_id]
     );
 
-    if (roomInfo.rows.length === 0) {
+    if (roomResult.rows.length === 0) {
       return res.status(404).json({ message: 'ไม่พบห้องนี้ในระบบ' });
     }
 
-    // 2. ดึงรายการจอง "ของวันนี้" ที่ "อนุมัติแล้ว"
-    // เรียงตามเวลาเริ่ม (09:00, 13:00, ...)
-    const schedule = await pool.query(
-      `SELECT 
-         start_time, 
-         end_time, 
-         purpose, 
-         u.name as teacher_name 
-       FROM public." " b
-       JOIN public."Users" u ON b.teacher_id = u.user_id
-       WHERE b.room_id = $1 
-         AND b.date = CURRENT_DATE 
-         AND b.status = 'approved'
-       ORDER BY start_time ASC`,
+    const room = roomResult.rows[0];
+
+    // 🛑 เช็คทันที: ถ้าห้องถูกปิดใช้งาน (Soft Deleted)
+    if (room.is_active === false) {
+      return res.json({
+        room,
+        status: 'closed',     // ส่งสถานะไปบอก Frontend
+        status_text: 'งดให้บริการ ณ ขณะนี้',
+        schedule: []          // ไม่ส่งตารางจองไป
+      });
+    }
+
+    // 2. ดึงตารางการใช้ห้อง "วันนี้" (รวม Booking และ Class Schedule)
+    // เราจะดึงข้อมูล 2 ตารางพร้อมกัน เพื่อความแม่นยำและได้ข้อมูลครบถ่วน
+
+    // 2.1 ดึง Booking
+    const bookingQuery = pool.query(
+      `SELECT booking_id as id, start_time, end_time, purpose as title, 'booking' as type
+       FROM public."Booking"
+       WHERE room_id = $1 
+       AND date = CURRENT_DATE 
+       AND status = 'approved' -- เฉพาะที่อนุมัติแล้ว`,
       [room_id]
     );
 
-    // 3. คำนวณสถานะปัจจุบัน (Real-time Status)
-    // เช็คว่า "เวลานี้ (NOW)" ตรงกับช่วงเวลาจองไหนไหม?
-    const now = new Date();
-    const currentTimeString = now.toTimeString().split(' ')[0]; // ได้ค่าเช่น "14:30:00"
+    // 2.2 ดึง Schedules (ตารางเรียนปกติ) เพิ่มส่วนนี้เพื่อให้สมบูรณ์
+    const classQuery = pool.query(
+      `SELECT schedule_id as id, start_time, end_time, subject_name as title, 'class' as type, temporarily_closed
+       FROM public."Schedules"
+       WHERE room_id = $1 
+       AND date = CURRENT_DATE
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL) -- เฉพาะวิชาที่ไม่ได้งด`, 
+      [room_id]
+    );
 
-    let currentStatus = 'available'; // สมมติว่าว่างไว้ก่อน
-    
-    // วนลูปเช็คว่าตอนนี้ห้องถูกใช้อยู่ไหม
-    for (const slot of schedule.rows) {
-      if (currentTimeString >= slot.start_time && currentTimeString <= slot.end_time) {
+    // รอให้เสร็จทั้งคู่
+    const [bookingRes, classRes] = await Promise.all([bookingQuery, classQuery]);
+
+    // รวมข้อมูลเป็น Array เดียว แล้วเรียงตามเวลา
+    const allSchedules = [...bookingRes.rows, ...classRes.rows].sort((a, b) => {
+        return a.start_time.localeCompare(b.start_time);
+    });
+
+
+    // 3. คำนวณสถานะ Real-time (ว่าง / ไม่ว่าง)
+    const now = new Date();
+    // แปลงเวลาปัจจุบันเป็น HH:MM:SS เพื่อเทียบกับ Database (Time type)
+    const currentTimeString = now.toLocaleTimeString('th-TH', { hour12: false }); 
+
+    let currentStatus = 'available'; 
+    let currentActivity = null; // เก็บหัวข้อวิชาที่กำลังเรียนอยู่ (ถ้ามี)
+
+    for (const slot of allSchedules) {
+      // แปลงเวลา database เป็น string ที่เทียบง่ายๆ
+      const start = String(slot.start_time); 
+      const end = String(slot.end_time);
+
+      // เช็คว่า "ตอนนี้" อยู่ในช่วงเวลานั้นไหม
+      if (currentTimeString >= start && currentTimeString <= end) {
         currentStatus = 'busy';
-        break; 
+        currentActivity = slot.title; // เอาชื่อวิชา/หัวข้อจอง ไปโชว์ด้วย
+        break; // เจอแล้วหยุดเช็คเลย
       }
     }
 
+    // 4. ส่งผลลัพธ์
     res.json({
-      room: roomInfo.rows[0],
-      status: currentStatus, // 'available' หรือ 'busy'
-      schedule: schedule.rows // รายการจองทั้งหมดของวันนี้
+      room,
+      status: currentStatus,       // 'available', 'busy', 'closed'
+      current_activity: currentActivity, // ชื่อวิชาที่เรียนอยู่ (ถ้ามี)
+      schedule: allSchedules.map(s => ({
+          ...s,
+          start_time: String(s.start_time).substring(0, 5), // ตัดวินาทีออกให้สวยงาม
+          end_time: String(s.end_time).substring(0, 5)
+      }))
     });
 
   } catch (error) {
-    console.error('Room Schedule Error:', error);
-    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูล' });
+    console.error('Get Room Schedule Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลห้อง' });
   }
 };
 
+// !!!!!!!!!!!!!!!!!!! ต้องปรับใหม่ คือแบ่งการแสดงผลออกเป็น สองส่วนคือ ส่วน staff จะเห็นทุกห้องรวมถึงห้องที่งดให้บริการด้วย ส่วน teacher, studen จะรับรู้แค่ห้องที่เปิดให้บริการเท่านั้น
 // /rooms/
 // ดึงรายชื่อห้องทั้งหมด (สำหรับแสดงในหน้าเลือกห้อง)
-export const getAllRooms = async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT room_id, room_type, capacity, location, room_characteristics 
-       FROM public."Rooms" 
-       ORDER BY room_id ASC`
-    );
+export const getAllRoom = async (req, res) => {
+  // รับค่า query parameter มากรอง (เผื่ออยากได้แค่ห้องที่ Active)
+  // ตัวอย่างเรียกใช้: /rooms?only_active=true
+  const { only_active } = req.query; 
 
-    // ส่งข้อมูลกลับไปเป็น JSON array
-    res.json(result.rows);
+  try {
+    let sql = `
+      SELECT 
+        room_id, 
+        room_type, 
+        capacity, 
+        location, 
+        room_characteristics,
+        is_active  -- 👈 1. ต้อง SELECT ตัวนี้ออกมาด้วย สำคัญมาก!
+      FROM public."Rooms"
+    `;
+    
+    const params = [];
+
+    // 2. ถ้าส่ง ?only_active=true มา ให้กรองเฉพาะห้องที่เปิดอยู่
+    // (เหมาะสำหรับหน้าจองของ User ทั่วไป)
+    if (only_active === 'true') {
+      sql += ` WHERE is_active = TRUE`;
+    }
+
+    sql += ` ORDER BY room_id ASC`;
+
+    const result = await pool.query(sql, params);
+
+    // 3. ปรับแต่งข้อมูลก่อนส่ง (Optional)
+    // เพิ่ม field ให้ Frontend เอาไปใช้ง่ายๆ เช่น status_color
+    const formattedRooms = result.rows.map(room => ({
+      ...room,
+      // แปลง is_active เป็น text หรือสี เพื่อให้ frontend เอาไปใช้ง่ายๆ
+      status_text: room.is_active ? 'พร้อมใช้งาน' : 'งดให้บริการ',
+      status_color: room.is_active ? 'green' : 'red' 
+    }));
+
+    res.json(formattedRooms);
+
   } catch (error) {
     console.error('Get All Rooms Error:', error);
     res.status(500).json({ message: 'ไม่สามารถดึงข้อมูลห้องได้' });
+  }
+};
+
+/* เป็น function ที่เราจะดึงห้องที่ไม่เปิดทำการ (is_active = false) 
+### res.json มีการส่ง rowConut เอาไว้อยู่แล้ว ### */
+export const getAllRoomNoActive = async (req, res) => {
+  try {
+    // ดึงเฉพาะห้องที่ is_active = false
+    const result = await pool.query(
+      `SELECT room_id, room_type, location, capacity, room_characteristics 
+       FROM public."Rooms" 
+       WHERE is_active = FALSE
+       ORDER BY room_id ASC`
+    );
+
+    // ส่งกลับไปทั้ง "จำนวน (count)" และ "รายการห้อง (rooms)"
+    res.json({
+      count: result.rowCount,
+      rooms: result.rows
+    });
+
+  } catch (error) {
+    console.error('Get Inactive Rooms Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลห้องที่ปิดใช้งาน' });
   }
 };
 
@@ -135,7 +232,7 @@ export const getRoomDetail = async (req, res) => {
   }
 };
 
-// (POST) /rooms/
+// (POST) /rooms
 // เพิ่มห้องใหม่
 export const createRoom = async (req, res) => {
   // รับค่าทั้งหมดจาก Body ทั้งข้อมูลห้อง และ ข้อมูลอุปกรณ์
@@ -145,22 +242,23 @@ export const createRoom = async (req, res) => {
     location, 
     capacity, 
     room_characteristics,
+    repair, // ข้อมูลว่าห้องนั้นพร้อมให้บริการไหม ?
     // รับ object อุปกรณ์แยกออกมา (ถ้ามี)
-    equipments 
+    equipments // เป็นชนิดข้อมูลแบบ object อยากต้องระวังหากมีการสร้าง form
   } = req.body;
 
   // เราต้องใช้ client เพื่อทำ Transaction (การันตีว่าถ้าบันทึกไม่ครบทั้ง 2 ตาราง ให้ยกเลิกทั้งหมด)
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN'); // 🔴 เริ่มต้น Transaction
+    await client.query('BEGIN'); // เริ่มต้น Transaction
 
     // STEP 1: Insert ลงตาราง Rooms
     await client.query(
       `INSERT INTO public."Rooms" 
-       (room_id, room_type, location, capacity, room_characteristics)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [room_id, room_type, location, capacity, room_characteristics]
+       (room_id, room_type, location, capacity, room_characteristics, repair, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, true)`,
+      [room_id, room_type, location, capacity, room_characteristics, repair]
     );
 
 
@@ -176,17 +274,17 @@ export const createRoom = async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           equipment_id,
-          room_id, // Foreign Key เชื่อมกลับไปหาห้อง
+          room_id, //  F-Key เชื่อมกลับไปหาห้อง
           equipments.projector || 0,   // ถ้าไม่ส่งมา ให้เป็น 0
-          equipments.microphone || 0,
-          equipments.computer || 0,
-          equipments.whiteboard || 0,
+          equipments.microphone || 0,  // ถ้าไม่ส่งมา ให้เป็น 0
+          equipments.computer || 0,    // ถ้าไม่ส่งมา ให้เป็น 0
+          equipments.whiteboard || 0,  // ถ้าไม่ส่งมา ให้เป็น 0
           equipments.type_of_computer || '-' // ถ้าไม่มีใส่ขีด
         ]
       );
     }
 
-    await client.query('COMMIT'); // ✅ ยืนยันการบันทึก (Save ทั้งหมด)
+    await client.query('COMMIT'); // ยืนยันการบันทึก (Save ทั้งหมด)
     res.status(201).json({ message: 'เพิ่มห้องและอุปกรณ์สำเร็จเรียบร้อย' });
 
   } catch (error) {
@@ -200,6 +298,55 @@ export const createRoom = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการเพิ่มห้อง' });
   } finally {
     client.release(); // คืน Connection กลับเข้า Pool
+  }
+};
+
+/* ไม่ใช้การลดออกจาก database แต่เป็นการปรับให้อยู่ใน database !!!!!!!!!!!!!!!! 
+(ข้อเสียคือ มีนจะค้างอยูาใน database ตลอดไป ควรหา cron 
+ที่คอยสังเกตุการณ์ว่าตอนนี้ไม่มีการอ้างอิงห้องนี้แล้วจากนั้นค่อยเอาออกจาก database) */
+export const deleteRoom = async (req, res) => {
+  const { room_id } = req.params;
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // STEP 1: "ยกเลิก" การจองในอนาคตทั้งหมด
+    // เปลี่ยนสถานะเป็น cancelled เฉพาะรายการที่ยังไม่จบ (pending/approved) และเป็นวันพรุ่งนี้เป็นต้นไป
+    await client.query(
+      `UPDATE public."Booking"
+       SET status = 'cancelled'
+       WHERE room_id = $1 
+       AND date >= CURRENT_DATE 
+       AND status IN ('pending', 'approved')`,
+      [room_id]
+    );
+
+    // STEP 2: "Soft Delete" ห้อง (เปลี่ยน is_active เป็น false)
+    const result = await client.query(
+      `UPDATE public."Rooms" 
+       SET is_active = FALSE 
+       WHERE room_id = $1
+       RETURNING room_id`, 
+      [room_id]
+    );
+
+    if (result.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'ไม่พบห้องที่ต้องการลบ' });
+    }
+
+    await client.query('COMMIT');
+    res.json({ 
+      message: `ลบห้อง ${room_id} สำเร็จ (Soft Delete) และยกเลิกการจองล่วงหน้าเรียบร้อยแล้ว` 
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Soft Delete Room Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการลบห้อง' });
+  } finally {
+    client.release();
   }
 };
 
