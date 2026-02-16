@@ -155,7 +155,7 @@ export const getAllRoom = async (req, res) => {
 
 /* เป็น function ที่เราจะดึงห้องที่ไม่เปิดทำการ (repair = false) 
 ### res.json มีการส่ง rowConut เอาไว้อยู่แล้ว ### */
-export const getAllRoomNoActive = async (req, res) => {
+export const getAllRoomRepair = async (req, res) => {
   try {
     // ดึงเฉพาะห้องที่ repair เป็น FALSE หรือ NULL (คือห้องที่เสีย หรือ ไม่พร้อม)
     const result = await pool.query(

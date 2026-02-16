@@ -6,27 +6,52 @@ import { sendBookingStatusEmail } from '../services/mailer.js';
 // ดึงรายการที่ "รออนุมัติ"
 export const getPendingBookings = async (req, res) => {
   try {
-    // เราต้อง JOIN ตาราง เพื่อให้ได้ชื่อห้องและชื่อคนจอง (ไม่ใช่แค่ ID)
-    const result = await pool.query(
-      `SELECT 
-         b.booking_id, 
-         b.date, 
-         b.start_time, 
-         b.end_time, 
-         b.purpose, 
-         b.status,
+    // ดึงข้อมูล User คนที่เรียก API นี้มาจาก Token
+    const requester = req.user; 
+    
+    // ตั้งค่า Default SQL
+    let sql = `
+      SELECT 
+         b.booking_id, b.date, b.start_time, b.end_time, b.purpose, b.status,
          r.room_id,
-         u.name as teacher_name,
-         u.email,
-        u.surname
-       FROM public."Booking" b
-       JOIN public."Rooms" r ON b.room_id = r.room_id
-       JOIN public."Users" u ON b.teacher_id = u.user_id
-       WHERE b.status = 'pending'
-       ORDER BY b.date ASC, b.start_time ASC`
-    );
+         u.name, u.surname, u.email
+      FROM public."Booking" b
+      JOIN public."Rooms" r ON b.room_id = r.room_id
+      JOIN public."Users" u ON b.teacher_id = u.user_id
+      WHERE b.status = 'pending'
+    `;
+    
+    const params = [];
+    
+    if (requester.role === 'teacher') {
+        // 🔒 ถ้าเป็น Teacher: บังคับกรองเฉพาะของตัวเอง
+        sql += ` AND b.teacher_id = $1`;
+        params.push(requester.user_id);
+        
+    } else if (requester.role === 'staff' || requester.role === 'admin') {
+        // กรณีส่ง 
+        if (req.query.user_id) {
+            sql += ` AND b.teacher_id = $1`;
+            params.push(req.query.user_id);
+        }
+        // ถ้าไม่ส่งมา ก็ปล่อยผ่าน (เห็นทั้งหมด)
+    }
 
-    res.json(result.rows);
+    // --- จบ Logic ---
+
+    sql += ` ORDER BY b.date ASC, b.start_time ASC`;
+
+    const result = await pool.query(sql, params);
+
+    // Format ข้อมูล
+    const formattedBookings = result.rows.map(row => ({
+       ...row,
+       teacher_name: `${row.name} ${row.surname}`,
+       start_time: String(row.start_time).substring(0, 5),
+       end_time: String(row.end_time).substring(0, 5)
+    }));
+
+    res.json(formattedBookings);
 
   } catch (error) {
     console.error('Get Pending Error:', error);
@@ -38,26 +63,60 @@ export const getPendingBookings = async (req, res) => {
 // ดึงรายการที่ "ถูกปฏิเสธ"
 export const getRejectedBookings = async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT 
-          b.booking_id, 
-          b.date, 
-          b.start_time, 
-          b.end_time, 
-          b.purpose,
-          b.status,
-          r.room_id,
-          u.name as teacher_name,
-          u.email,
-          u.surname
-        FROM public."Booking" b
-        JOIN public."Rooms" r ON b.room_id = r.room_id
-        JOIN public."Users" u ON b.teacher_id = u.user_id
-        WHERE b.status = 'rejected'
-        ORDER BY b.date DESC, b.start_time ASC`
-    );
+    // 1. รับข้อมูลผู้เรียก (Requester) และ Query Parameter
+    const requester = req.user; 
+    const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
 
-    res.json(result.rows);
+    // 2. สร้าง SQL พื้นฐาน
+    let sql = `
+      SELECT 
+         b.booking_id, 
+         b.date, 
+         b.start_time, 
+         b.end_time, 
+         b.purpose,
+         b.status,
+         r.room_id,
+         u.name, 
+         u.surname,
+         u.email
+      FROM public."Booking" b
+      JOIN public."Rooms" r ON b.room_id = r.room_id
+      JOIN public."Users" u ON b.teacher_id = u.user_id
+      WHERE b.status = 'rejected'
+    `;
+
+    const params = [];
+
+    // 3. Logic การกรองสิทธิ์ (Role-based Logic)
+    if (requester.role === 'teacher') {
+        // 🔒 Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
+        sql += ` AND b.teacher_id = $1`;
+        params.push(requester.user_id);
+
+    } else if (requester.role === 'staff' || requester.role === 'admin') {
+        // 🔓 Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
+        if (user_id) {
+            sql += ` AND b.teacher_id = $1`;
+            params.push(user_id);
+        }
+    }
+
+    // 4. การเรียงลำดับ (วันที่ล่าสุดขึ้นก่อน)
+    sql += ` ORDER BY b.date DESC, b.start_time ASC`;
+
+    // 5. รัน Query
+    const result = await pool.query(sql, params);
+
+    // 6. จัด Format ข้อมูล
+    const formattedBookings = result.rows.map(row => ({
+       ...row,
+       teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
+       start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
+       end_time: String(row.end_time).substring(0, 5)
+    }));
+
+    res.json(formattedBookings);
 
   } catch (error) {
     console.error('Get Rejected Error:', error);
@@ -69,26 +128,62 @@ export const getRejectedBookings = async (req, res) => {
 // ดึงรายการที่ "อนุมัติแล้ว"
 export const getApprovedBookings = async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT 
+    // 1. รับข้อมูลผู้เรียก (Requester) และ Query Parameter
+    const requester = req.user; 
+    const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
+
+    // 2. สร้าง SQL พื้นฐาน
+    let sql = `
+      SELECT 
          b.booking_id, 
          b.date, 
          b.start_time, 
-         b.end_time,
-         r.room_id,
+         b.end_time, 
          b.purpose, 
          b.status,
-         u.name as teacher_name,
-         u.email,
-        u.surname
-       FROM public."Booking" b
-       JOIN public."Rooms" r ON b.room_id = r.room_id
-       JOIN public."Users" u ON b.teacher_id = u.user_id
-       WHERE b.status = 'approved'
-       ORDER BY b.date DESC, b.start_time ASC` 
-    );
+         r.room_id,
+         u.name, 
+         u.surname, 
+         u.email
+      FROM public."Booking" b
+      JOIN public."Rooms" r ON b.room_id = r.room_id
+      JOIN public."Users" u ON b.teacher_id = u.user_id
+      WHERE b.status = 'approved'
+    `;
 
-    res.json(result.rows);
+    const params = [];
+
+    // 3. Logic การกรองสิทธิ์ (Role-based Logic)
+    if (requester.role === 'teacher') {
+        // 🔒 Teacher: เห็นเฉพาะของตัวเองเท่านั้น
+        sql += ` AND b.teacher_id = $${params.length + 1}`;
+        params.push(requester.user_id);
+
+    } else if (requester.role === 'staff' || requester.role === 'admin') {
+        // 🔓 Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
+        if (user_id) {
+            sql += ` AND b.teacher_id = $${params.length + 1}`;
+            params.push(user_id);
+        }
+    }
+
+    // 4. การเรียงลำดับ 
+    // (แนะนำ: ถ้าเป็นรายการที่ "กำลังจะมาถึง" ใช้ ASC จะดูง่ายกว่า แต่ถ้าดูประวัติใช้ DESC ครับ)
+    // อันนี้ผมคง DESC ตามโค้ดเดิมไว้ก่อนครับ
+    sql += ` ORDER BY b.date DESC, b.start_time ASC`;
+
+    // 5. รัน Query
+    const result = await pool.query(sql, params);
+
+    // 6. จัด Format ข้อมูล
+    const formattedBookings = result.rows.map(row => ({
+       ...row,
+       teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
+       start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
+       end_time: String(row.end_time).substring(0, 5)
+    }));
+
+    res.json(formattedBookings);
 
   } catch (error) {
     console.error('Get Approved Error:', error);

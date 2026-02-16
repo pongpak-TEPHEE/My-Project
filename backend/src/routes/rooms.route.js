@@ -9,7 +9,7 @@ import {
     getRoomQRCode,
     deleteRoom,
     editRoom,
-    getAllRoomNoActive
+    getAllRoomRepair
 } 
 from '../controllers/rooms.controller.js';
 
@@ -28,7 +28,7 @@ router.get('/:id', getRoomDetail);
 router.get('/', getAllRoom);
 
 // ดึงห้องที่ งดให้บริการ
-router.get('/noActive', getAllRoomNoActive);
+router.get('/noActive', getAllRoomRepair);
 
 // การเพิ่มห้อง staff สามารถทำได้เท่านั้น
 router.post('/', authenticateToken, authorizeRole('staff'), createRoom);
