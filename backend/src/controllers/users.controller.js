@@ -9,7 +9,7 @@ export const getUsers = async (req, res) => {
 };
 
 // /users/create
-// ใช้เมื่อสร้าง frome สำหรับเพิ่ม user (teacher, staff) โดยใสข้อมูล (user_id, title, name, surname, role, email)
+// ใช้เมื่อสร้าง form สำหรับเพิ่ม user (teacher, staff) โดยใสข้อมูล (user_id, title, name, surname, role, email)
 export const createUser = async (req, res) => {
 
   const { user_id, title, name, surname, role, email } = req.body;

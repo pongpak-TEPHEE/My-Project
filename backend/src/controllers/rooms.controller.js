@@ -359,7 +359,7 @@ export const deleteRoom = async (req, res) => {
 };
 
 // rooms/:room_id/edit
-// เป็นการ แก้ไขห้อง 
+// เป็นการ แก้ไขห้อง ข้อที่ห้ามลืมคือ fronend ต้องส่ง is_active มาเสมอ
 export const editRoom = async (req, res) => {
   const { room_id } = req.params;
 
