@@ -28,16 +28,13 @@ export const getPendingBookings = async (req, res) => {
         sql += ` AND b.teacher_id = $1`;
         params.push(requester.user_id);
         
-    } else if (requester.role === 'staff' || requester.role === 'admin') {
-        // กรณีส่ง 
+    } else if (requester.role === 'staff') {
+        // กรณีส่ง
         if (req.query.user_id) {
             sql += ` AND b.teacher_id = $1`;
             params.push(req.query.user_id);
         }
-        // ถ้าไม่ส่งมา ก็ปล่อยผ่าน (เห็นทั้งหมด)
     }
-
-    // --- จบ Logic ---
 
     sql += ` ORDER BY b.date ASC, b.start_time ASC`;
 
@@ -46,11 +43,12 @@ export const getPendingBookings = async (req, res) => {
     // Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
        ...row,
-       teacher_name: `${row.name} ${row.surname}`,
+      //  teacher_name: `${row.name} ${row.surname}`,
        start_time: String(row.start_time).substring(0, 5),
        end_time: String(row.end_time).substring(0, 5)
     }));
 
+    // console.log("ข้อมูลที่ดึง : ", formattedBookings);
     res.json(formattedBookings);
 
   } catch (error) {
@@ -111,11 +109,11 @@ export const getRejectedBookings = async (req, res) => {
     // 6. จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
        ...row,
-       teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
+      //  teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
        end_time: String(row.end_time).substring(0, 5)
     }));
-
+    // console.log("ข้อมูลที่ดึง : ", formattedBookings);
     res.json(formattedBookings);
 
   } catch (error) {
@@ -178,11 +176,11 @@ export const getApprovedBookings = async (req, res) => {
     // 6. จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
        ...row,
-       teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
+      //  teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
        end_time: String(row.end_time).substring(0, 5)
     }));
-
+    // console.log("ข้อมูลที่ดึง : ", formattedBookings);
     res.json(formattedBookings);
 
   } catch (error) {
