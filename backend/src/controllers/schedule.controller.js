@@ -468,12 +468,13 @@ export const updateScheduleStatus = async (req, res) => {
   const { id } = req.params; // รับ schedule_id
   const { temporarily_closed } = req.body;
 
-  
-  // ✅ ดึง user_id และ role จาก Token (ที่ผ่าน Middleware มา)
+  // ดึง user_id และ role จาก Token
   // user_id นี้คือ ID ของคนที่กำลังกดปุ่มอยู่ตอนนี้
   const { user_id, role } = req.user;
 
-    console.log("user_id : ", user_id);
+
+  console.log("user_id : ", user_id);
+  console.log("user_id : ", role);
 
   // ตรวจสอบ Input
   if (typeof temporarily_closed !== 'boolean') {
@@ -481,9 +482,7 @@ export const updateScheduleStatus = async (req, res) => {
   }
 
   try {
-    // -----------------------------------------------------------
-    // 🛡️ สร้าง Query แบบ Dynamic (แยก Logic ตาม Role)
-    // -----------------------------------------------------------
+    // สร้าง Query แบบ Dynamic (แยก Logic ตาม Role)
     
     let sql = `UPDATE public."Schedules"
                SET temporarily_closed = $1
@@ -493,21 +492,15 @@ export const updateScheduleStatus = async (req, res) => {
 
     // 🔒 กฎ: ถ้า "ไม่ใช่ Admin" ต้องเช็คว่า teacher_id ตรงกับ user_id ไหม
     // (สมมติว่าในตาราง Schedules มีคอลัมน์ชื่อ teacher_id นะครับ)
-    if (role !== 'staff') {
+    if (role.toLowerCase().trim() !== 'staff') {
         sql += ` AND teacher_id = $3`; 
         params.push(user_id);
     }
 
     sql += ` RETURNING schedule_id, subject_name, temporarily_closed`;
 
-    // -----------------------------------------------------------
-    // 🚀 ยิง Database
-    // -----------------------------------------------------------
     const result = await pool.query(sql, params);
 
-    // ถ้าไม่เจอผลลัพธ์ (row = 0) เป็นไปได้ 2 กรณี:
-    // 1. ไม่มี ID นี้จริง
-    // 2. มี ID นี้จริง แต่ user_id ไม่ตรง (โดน AND teacher_id = ... ดักไว้)
     if (result.rows.length === 0) {
       return res.status(403).json({ 
           message: 'ไม่พบข้อมูล หรือ คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้' 

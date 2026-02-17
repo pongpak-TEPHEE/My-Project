@@ -120,17 +120,12 @@ export const getAllRoom = async (req, res) => {
         capacity, 
         location, 
         room_characteristics,
-        is_active            -- ❌ ลบลูกน้ำ (,) ออก
-      FROM public."Rooms"    -- ✅ ย้าย FROM มาไว้ตรงนี้
-      WHERE is_active = TRUE -- ✅ ย้าย WHERE มาไว้ทีหลัง และใช้ TRUE (ไม่มี "")
+        repair,
+        is_active
+      FROM public."Rooms"
+      WHERE is_active = TRUE 
     `;
     const params = [];
-
-    // 2. ถ้าส่ง ?only_active=true มา ให้กรองเฉพาะห้องที่เปิดอยู่
-    // (เหมาะสำหรับหน้าจองของ User ทั่วไป)
-    // if (only_active === 'true') {
-    //   sql += ` `;
-    // }
 
     sql += ` ORDER BY room_id ASC`;
 
@@ -140,9 +135,9 @@ export const getAllRoom = async (req, res) => {
     // เพิ่ม field ให้ Frontend เอาไปใช้ง่ายๆ เช่น status_color
     const formattedRooms = result.rows.map(room => ({
       ...room,
-      // แปลง is_active เป็น text หรือสี เพื่อให้ frontend เอาไปใช้ง่ายๆ
-      status_text: room.is_active ? 'พร้อมใช้งาน' : 'งดให้บริการ',
-      status_color: room.is_active ? 'green' : 'red' 
+      // แปลง repair เป็น text หรือสี เพื่อให้ frontend เอาไปใช้ง่ายๆ
+      status_text: room.repair ? 'พร้อมใช้งาน' : 'งดให้บริการ',
+      status_color: room.repair ? 'green' : 'red' 
     }));
 
     res.json(formattedRooms);
