@@ -9,7 +9,8 @@ import {
     getRoomQRCode,
     deleteRoom,
     editRoom,
-    getAllRoomRepair
+    getAllRoomRepair,
+    findAvailableRooms
 } 
 from '../controllers/rooms.controller.js';
 
@@ -38,6 +39,10 @@ router.patch('/:room_id/delete', authenticateToken, authorizeRole('staff'), dele
 
 // แก้ไขข้อมูลในห้อง
 router.put('/:room_id/edit', authenticateToken, authorizeRole('staff'), editRoom);
+
+// POST /rooms/search
+// ค้นหาห้องที่เลือกตามข้อมูลที่ user กรอก
+router.post('/search', authenticateToken, findAvailableRooms);
 
 
 export default router;

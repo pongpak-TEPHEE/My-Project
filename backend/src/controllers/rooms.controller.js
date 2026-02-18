@@ -315,41 +315,83 @@ export const deleteRoom = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN');
+    await client.query('BEGIN'); // เริ่ม Transaction
 
-    // STEP 1: "ยกเลิก" การจองในอนาคตทั้งหมด
-    // เปลี่ยนสถานะเป็น cancelled เฉพาะรายการที่ยังไม่จบ (pending/approved) และเป็นวันพรุ่งนี้เป็นต้นไป
-    await client.query(
-      `UPDATE public."Booking"
-       SET status = 'cancelled'
-       WHERE room_id = $1 
-       AND date >= CURRENT_DATE 
-       AND status IN ('pending', 'approved')`,
+    // STEP 1: ตรวจสอบประวัติการใช้งาน (Check Dependencies)
+    
+    // เช็ค 1: มีใน Booking หรือไม่? (เช็คหมดทั้งอดีตและอนาคต เพื่อรักษา Data Integrity)
+    const checkBooking = await client.query(
+      `SELECT 1 FROM public."Booking" WHERE room_id = $1 LIMIT 1`,
       [room_id]
     );
 
-    // STEP 2: "Soft Delete" ห้อง (เปลี่ยน is_active เป็น false)
-    const result = await client.query(
-      `UPDATE public."Rooms" 
-       SET is_active = FALSE 
-       WHERE room_id = $1
-       RETURNING room_id`, 
+    // เช็ค 2: มีใน Schedules (ตารางสอน) หรือไม่?
+    const checkSchedule = await client.query(
+      `SELECT 1 FROM public."Schedules" WHERE room_id = $1 LIMIT 1`,
       [room_id]
     );
 
-    if (result.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ message: 'ไม่พบห้องที่ต้องการลบ' });
+    const hasHistory = (checkBooking.rowCount > 0 || checkSchedule.rowCount > 0);
+
+    // STEP 2: ตัดสินใจว่าจะลบแบบไหน?
+
+    if (!hasHistory) {
+      // ✅ กรณี A: "ไม่มีประวัติเลย" -> ลบถาวร (Hard Delete)
+      
+      // 1. ลบ Equipment ก่อน (ถ้ามี FK constraint)
+      await client.query(`DELETE FROM public."Equipment" WHERE room_id = $1`, [room_id]);
+      
+      // 2. ลบ Rooms
+      const deleteResult = await client.query(
+        `DELETE FROM public."Rooms" WHERE room_id = $1 RETURNING room_id`,
+        [room_id]
+      );
+
+      if (deleteResult.rowCount === 0) {
+        throw new Error('Room not found during hard delete');
+      }
+
+      await client.query('COMMIT');
+      return res.json({ 
+        message: `ลบห้อง ${room_id} ถาวรเรียบร้อยแล้ว (Hard Delete) เนื่องจากไม่มีประวัติการใช้งาน` 
+      });
+
+    } else {
+      // ⚠️ กรณี B: "มีประวัติการใช้งาน" -> ปิดการใช้งาน (Soft Delete)
+      
+      // 1. ยกเลิก Booking ในอนาคต (เฉพาะที่ยังไม่จบ)
+      await client.query(
+        `UPDATE public."Booking"
+         SET status = 'cancelled'
+         WHERE room_id = $1 
+         AND date >= CURRENT_DATE 
+         AND status IN ('pending', 'approved')`,
+        [room_id]
+      );
+
+      // 2. เปลี่ยน is_active เป็น false
+      const updateResult = await client.query(
+        `UPDATE public."Rooms" 
+         SET is_active = FALSE 
+         WHERE room_id = $1
+         RETURNING room_id`, 
+        [room_id]
+      );
+
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ message: 'ไม่พบห้องที่ต้องการลบ' });
+      }
+
+      await client.query('COMMIT');
+      return res.json({ 
+        message: `ปิดการใช้งานห้อง ${room_id} สำเร็จ (Soft Delete) และยกเลิกรายการจองล่วงหน้าแล้ว (เก็บประวัติเดิมไว้)` 
+      });
     }
-
-    await client.query('COMMIT');
-    res.json({ 
-      message: `ลบห้อง ${room_id} สำเร็จ (Soft Delete) และยกเลิกการจองล่วงหน้าเรียบร้อยแล้ว` 
-    });
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Soft Delete Room Error:', error);
+    console.error('Delete Room Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการลบห้อง' });
   } finally {
     client.release();
@@ -492,5 +534,87 @@ export const getRoomQRCode = async (req, res) => {
   } catch (error) {
     console.error('QR Gen Error:', error);
     res.status(500).json({ message: 'สร้าง QR Code ไม่สำเร็จ' });
+  }
+};
+
+
+export const findAvailableRooms = async (req, res) => {
+  // รับค่า Date, Start, End, Capacity Body
+  // POST /rooms/search
+  const { date, start_time, end_time, capacity } = req.body;
+
+  // 1. Validation เบื้องต้น
+  if (!date || !start_time || !end_time) {
+    return res.status(400).json({ message: 'กรุณาระบุวันที่, เวลาเริ่ม และเวลาสิ้นสุด' });
+  }
+
+  if (start_time >= end_time) {
+    return res.status(400).json({ message: 'เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด' });
+  }
+
+  try {
+    const client = await pool.connect();
+    
+    // SQL Query: หาห้องที่ "ว่าง"
+    // หลักการ: เลือกห้องทั้งหมด แล้วตัดห้องที่มีการจองซ้อนทับ (Overlap) ออก
+    const query = `
+      SELECT 
+        r.room_id, 
+        r.room_type, 
+        r.capacity, 
+        r.location, 
+        r.room_characteristics,
+        eq.projector,
+        eq.computer,
+        eq.microphone
+      FROM public."Rooms" r
+      LEFT JOIN public."Equipment" eq ON r.room_id = eq.room_id
+
+      WHERE 
+        -- 1. ห้องต้องเปิดใช้งาน และ ไม่เสีย
+        r.is_active = TRUE 
+        AND (r.repair IS NULL OR r.repair = FALSE)
+        
+        -- 2. ที่นั่งต้องพอ (แสดงข้อมูลที่นั่งที่มากพอรับจำนวนนิสิต)
+        AND ($4::int IS NULL OR r.capacity >= $4)
+
+        -- 3. ต้องไม่มี Booking มาขวาง (Overlap Logic)
+        AND r.room_id NOT IN (
+          SELECT b.room_id 
+          FROM public."Booking" b
+          WHERE b.date = $1
+          AND b.status IN ('pending', 'approved') -- รวมที่จองแล้วและรออนุมัติ
+          AND (b.start_time < $3 AND b.end_time > $2) -- สูตรเช็คเวลาชน
+        )
+
+        -- 4. ต้องไม่มี ตารางเรียน (Schedules) มาขวาง
+        AND r.room_id NOT IN (
+          SELECT s.room_id 
+          FROM public."Schedules" s
+          WHERE s.date = $1
+          AND (s.temporarily_closed IS FALSE OR s.temporarily_closed IS NULL) -- วิชาที่ไม่ได้งด
+          AND (s.start_time < $3 AND s.end_time > $2) -- สูตรเช็คเวลาชนเดียวกัน
+        )
+
+      ORDER BY r.capacity ASC, r.room_id ASC
+    `;
+
+    const result = await client.query(query, [
+      date, 
+      start_time, 
+      end_time, 
+      capacity || null 
+    ]);
+
+    client.release();
+
+    res.json({
+      message: `ค้นพบห้องว่าง ${result.rowCount} ห้อง`,
+      available_rooms: result.rows
+    });
+
+  } catch (error) {
+    console.error('Search Room Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการค้นหาห้องว่าง' });
   }
 };
