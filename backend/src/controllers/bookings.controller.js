@@ -257,45 +257,25 @@ export const createBookingForTeacher = async (req, res) => {
   const teacher_id = req.user.user_id; 
 
   try {
-    // 0. ตรวจสอบเรื่องเวลา (ห้ามจองย้อนหลัง และ ต้องล่วงหน้า 3 วัน)
-    // เตรียมตัวแปรเวลาปัจจุบัน และ เวลาที่ขอจอง
+    // 0. ตรวจสอบเรื่องเวลา (Standardization)
+
     const now = new Date();
-    const bookingDate = new Date(date); // วันที่ที่ต้องการจอง (00:00 น.)
-    
-    // Set เวลาให้เป็น 00:00:00 ทั้งคู่ เพื่อเปรียบเทียบเฉพาะ "วัน"
+    const bookingDate = new Date(date);
+    const bookingStart = new Date(`${date}T${start_time}`);
+
+    // Set เวลาให้เป็น 00:00:00 เพื่อเทียบแค่วันที่
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     bookingDate.setHours(0, 0, 0, 0);
 
-    // 0.1 ดักการจองย้อนหลัง (ถ้าวันที่จอง น้อยกว่า วันนี้)
+    // 0.1 ห้ามจองย้อนหลัง (อดีต)
     if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
     }
-
-    // 0.2 กฎการจองล่วงหน้า 3 วัน 
-    // วิธีคิด: วันที่จอง - วันนี้ ต้อง >= 3 วัน
-    // (1 วัน มี 86,400,000 มิลลิวินาที)
-    const diffTime = bookingDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 3) {
-       // คำนวณวันที่เร็วที่สุดที่จองได้เพื่อบอก User
-       const minDate = new Date(today);
-       minDate.setDate(today.getDate() + 3);
-       const minDateString = minDate.toLocaleDateString('th-TH'); // แปลงเป็นรูปแบบไทย
-
-       return res.status(400).json({ 
-         message: `ต้องจองล่วงหน้าอย่างน้อย 3 วัน (จองได้เร็วที่สุดตั้งแต่วันที่ ${minDateString} เป็นต้นไป)`,
-         allowed_date: minDate
-       });
-    }
-
-    // ถ้าผ่านกฎวันที่ ก็ไปเช็คเวลาต่อ
-    const bookingStart = new Date(`${date}T${start_time}`);
-    if (bookingStart < now) { 
-        // กรณีจองวันนี้ (ซึ่งผ่านกฎ 3 วันไม่ได้อยู่แล้ว แต่ใส่กันเหนียวไว้) 
-        // หรือกรณีเวลาใน bookingStart มันผ่านไปแล้วจริงๆ
-        return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
+    
+    // เช็คเวลาละเอียด (กรณีจองวันนี้ แต่เวลาผ่านไปแล้ว)
+    if (bookingStart < now) {
+       return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
 
     // 1. ตรวจสอบว่าห้องว่างไหม?
@@ -389,9 +369,9 @@ export const createBookingForStaff = async (req, res) => {
   const staff_id = req.user.user_id; 
 
   try {
-    // -----------------------------------------------------------------------
+
     // 0. ตรวจสอบเรื่องเวลา (Standardization)
-    // -----------------------------------------------------------------------
+
     const now = new Date();
     const bookingDate = new Date(date);
     const bookingStart = new Date(`${date}T${start_time}`);
@@ -411,8 +391,6 @@ export const createBookingForStaff = async (req, res) => {
        return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
 
-    // *หมายเหตุ: สำหรับ Staff เราตัดกฎ "จองล่วงหน้า 3 วัน" ออก 
-    // เพื่อให้ Staff สามารถจองห้องใช้งานด่วนได้ (Emergency Booking)
 
 
     // 1. ตรวจสอบว่าห้องว่างไหม?
