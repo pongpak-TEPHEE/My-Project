@@ -124,7 +124,7 @@ export const importClassSchedules = async (req, res) => {
       if (isNaN(currentIdNum)) currentIdNum = 0;
     }
 
-    // --- STEP 2: วนลูปตรวจสอบข้อมูล (แบบ 15 สัปดาห์) ---
+    // --- STEP 2: วนลูปตรวจสอบข้อมูล---
     const validData = []; 
     const errors = [];
     let successCount = 0; // นับจำนวนคาบที่สร้างได้จริง (ไม่ใช่จำนวนแถว Excel)
@@ -241,8 +241,8 @@ export const importClassSchedules = async (req, res) => {
                     message: `(Week ${week + 1}: ${dateStr}) ${err.message}` 
                 });
             }
-        } // End Inner Loop (15 Weeks)
-    } // End Outer Loop (Excel Rows)
+        }
+    }
 
     // ส่ง Response
     res.json({

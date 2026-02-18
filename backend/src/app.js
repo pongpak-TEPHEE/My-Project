@@ -22,7 +22,6 @@ const globalLimiter = rateLimit({
 });
 
 app.set('trust proxy', 1);
-
 app.use(globalLimiter);
 app.use(express.json());
 
