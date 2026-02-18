@@ -222,9 +222,9 @@ export const importClassSchedules = async (req, res) => {
                     start_time: startTime,
                     end_time: endTime,
                     semester_id: semesterId,
+                    temporarily_closed: false,
                     teacher_id: teacherId,
-                    date: targetDate,
-                    temporarily_closed: false
+                    date: targetDate
                 });
 
                 successCount++;
@@ -330,8 +330,8 @@ const insertScheduleToDB = async (client, data, currentIdNum) => {
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date, teacher_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date, temporarily_closed, teacher_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       nextScheduleId,
       data.room_id,
@@ -341,6 +341,7 @@ const insertScheduleToDB = async (client, data, currentIdNum) => {
       data.end_time,
       data.semester_id,
       data.date,
+      data.temporarily_closed,
       data.teacher_id
     ]
   );
@@ -527,5 +528,3 @@ export const updateScheduleStatus = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการอัปเดตสถานะ' });
   }
 };
-
-
