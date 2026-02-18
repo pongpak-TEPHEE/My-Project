@@ -132,46 +132,53 @@ export const importClassSchedules = async (req, res) => {
     // Loop 1: วนตามแถวใน Excel (รายวิชา)
     for (const [index, row] of importedData.entries()) {
         
-        // ดึงข้อมูลพื้นฐาน (ที่ไม่เปลี่ยนตามสัปดาห์)
+        // ดึงข้อมูลพื้นฐาน
         const roomId = row.room_id ? String(row.room_id).trim() : null;
         const subjectName = row.subject_name ? String(row.subject_name).trim() : "";
         const teacherName = row.teacher_name ? String(row.teacher_name).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
         const teacherId = row.user_id ? String(row.user_id).trim() : "";
         
-        // เวลาเริ่ม-จบ (เหมือนเดิมทุกสัปดาห์)
+        // ✅ แก้ไขตรงนี้ 1: ดึงจำนวนรอบ (repeat) จาก Excel
+        // - ถ้ามีข้อมูล: ให้แปลงเป็นตัวเลข (parseInt)
+        // - ถ้าไม่มีข้อมูล: ให้ Default เป็น 15 (ตามลูปเดิมของคุณ) หรือจะเป็น 1 ก็ได้แล้วแต่ตกลง
+        let repeatCount = row.repeat ? parseInt(row.repeat) : 15; 
+
+        // กันพลาด: ถ้าเลขที่ใส่มาน้อยกว่า 1 ให้บังคับเป็น 1
+        if (isNaN(repeatCount) || repeatCount < 1) repeatCount = 1;
+
+        // เวลาเริ่ม-จบ
         const startTime = formatExcelData(row.start_time, 'time'); 
         const endTime = formatExcelData(row.end_time, 'time');
         
-        // วันที่เริ่มต้น (First Date)
-        const firstDateRaw = formatExcelData(row.date, 'date'); // ต้องได้ Format 'YYYY-MM-DD'
+        // วันที่เริ่มต้น
+        const firstDateRaw = formatExcelData(row.date, 'date');
 
-        // Validation ตรวจสอบ ข้อมูล room id, semester id, first dae raw ว่ามีข้อมูลไหมในแต่ละ rows
+        // Validation
         if (!roomId || !semesterId || !firstDateRaw) {
              errors.push({ 
-                row: index + 2, // ไปที่ row ทัดไป
+                row: index + 2,
                 room: roomId || 'ไม่ระบุ', 
                 type: 'INVALID_DATA',
                 message: 'ข้อมูลไม่ครบ (ต้องมี room_id, semester_id, date)' 
             });
-            continue; // ข้ามแถวนี้ไปเลยถ้าข้อมูลหลักไม่ครบ
+            continue;
         }
 
-        // แปลง firstDateRaw เป็น Object Date เพื่อคำนวณ
-        const baseDateObj = new Date(firstDateRaw); // สร้าง วันเริ่มต้นก่อนจะวลลูป
+        const baseDateObj = new Date(firstDateRaw);
 
-        // ✅ Loop 2: วนลูป 15 สัปดาห์ (Week 1 - Week 15)
-        for (let week = 0; week < 15; week++) {
+        // ✅ แก้ไขตรงนี้ 2: เปลี่ยนเลข 15 เป็นตัวแปร repeatCount
+        for (let week = 0; week < repeatCount; week++) {
             try {
-                // คำนวณวันที่ของสัปดาห์ที่ week
-                // สูตร: วันที่ฐาน + (จำนวนสัปดาห์ * 7 วัน)
+                // คำนวณวันที่ (Logic เดิมถูกต้องแล้วครับ)
                 const targetDateObj = new Date(baseDateObj);
                 targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
-                // แปลงกลับเป็น String 'YYYY-MM-DD' เพื่อใช้กับ Database
                 const targetDate = targetDateObj.toISOString().split('T')[0];
 
+                // ... (Logic การเช็คชน (Conflict Check) เหมือนเดิมทุกประการ) ...
+                
                 // 🛑 CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
-                const scheduleConflictCheck = await pool.query(
+                 const scheduleConflictCheck = await pool.query(
                     `SELECT schedule_id, subject_name, start_time, end_time
                      FROM public."Schedules"
                      WHERE room_id = $1
@@ -207,8 +214,8 @@ export const importClassSchedules = async (req, res) => {
 
                 // --- ถ้าไม่ชนใครเลย ---
                 validData.push({
-                    temp_id: `${index + 1}_w${week + 1}`, // สร้าง ID ปลอม เช่น 1_w1, 1_w2
-                    week_number: week + 1, // บอกว่าเป็นสัปดาห์ที่เท่าไหร่
+                    temp_id: `${index + 1}_w${week + 1}`,
+                    week_number: week + 1,
                     room_id: roomId,
                     subject_name: subjectName,
                     teacher_name: teacherName,
@@ -216,14 +223,14 @@ export const importClassSchedules = async (req, res) => {
                     end_time: endTime,
                     semester_id: semesterId,
                     teacher_id: teacherId,
-                    date: targetDate // ใช้วันที่ที่คำนวณใหม่
+                    date: targetDate,
+                    temporarily_closed: false
                 });
 
                 successCount++;
 
             } catch (err) {
-                // เก็บ Error โดยระบุด้วยว่าเป็นของสัปดาห์ไหน
-                // วันที่ error อาจจะ format ให้สวยงามหน่อย
+                 // ... (Error Handling เหมือนเดิม) ...
                 const targetDateObj = new Date(baseDateObj);
                 targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
                 const dateStr = targetDateObj.toISOString().split('T')[0];
@@ -241,7 +248,7 @@ export const importClassSchedules = async (req, res) => {
                     message: `(Week ${week + 1}: ${dateStr}) ${err.message}` 
                 });
             }
-        }
+        } // End Inner Loop (repeatCount Weeks)
     }
 
     // ส่ง Response

@@ -108,9 +108,6 @@ export const getRoomScheduleToday = async (req, res) => {
 // /rooms/
 // ดึงรายชื่อห้องทั้งหมด (สำหรับแสดงในหน้าเลือกห้อง)
 export const getAllRoom = async (req, res) => {
-  // รับค่า query parameter มากรอง (เผื่ออยากได้แค่ห้องที่ Active)
-  // ตัวอย่างเรียกใช้: /rooms?only_active=true
-  const { only_active } = req.query; 
 
   try {
    let sql = `

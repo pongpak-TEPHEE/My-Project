@@ -3,7 +3,6 @@ import { pool } from '../config/db.js';
 
 
 export const startCleanupJob = () => {
-  
 
   // JOB 1: ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
@@ -53,14 +52,7 @@ export const startCleanupJob = () => {
     }
   });
 
-};
-
-// '*/5 * * * *' = ทำทุกๆ 5 นาที
-// '0 * * * *' = ทำทุกต้นชั่วโมง 
-// '0 0 * * *' = ทำทุกเที่ยงคืนตรง
-
-
-cron.schedule('0 3 * * *', async () => {
+  cron.schedule('0 3 * * *', async () => {
     console.log('🧹 Running Token Blacklist Cleanup...');
     try {
       const result = await pool.query(
@@ -73,3 +65,11 @@ cron.schedule('0 3 * * *', async () => {
       console.error('❌ Token Cleanup Error:', error);
     }
   });
+
+};
+
+// '*/5 * * * *' = ทำทุกๆ 5 นาที
+// '0 * * * *' = ทำทุกต้นชั่วโมง 
+// '0 0 * * *' = ทำทุกเที่ยงคืนตรง
+
+
