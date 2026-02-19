@@ -1,5 +1,6 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
+import crypto from 'crypto'; // สำหรับเข้าระหัส schedule_id
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelData = (value, type = 'time') => {
@@ -284,26 +285,11 @@ export const confirmSchedules = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่ม Transaction (ถ้าพัง ให้ยกเลิกทั้งหมด)
 
-    // 1. หา ID ล่าสุดใน DB ก่อน
-    let currentIdNum = 0;
-    const lastIdResult = await client.query(
-      `SELECT schedule_id FROM public."Schedules" ORDER BY schedule_id DESC LIMIT 1`
-    );
+    console.log(`💾 กำลังบันทึก ${schedules.length} รายการ...`);
 
-    if (lastIdResult.rows.length > 0) {
-      const lastId = lastIdResult.rows[0].schedule_id;
-      const numPart = lastId.replace('schedule', '');
-      currentIdNum = parseInt(numPart, 10);
-      if (isNaN(currentIdNum)) currentIdNum = 0;
-    }
-
-    console.log(`💾 กำลังบันทึก ${schedules.length} รายการ... เริ่มต้นที่ ID: ${currentIdNum}`);
-
-    // 2. วนลูปบันทึกข้อมูลทีละแถว
     for (const schedule of schedules) {
-      // เรียกใช้ฟังก์ชัน insert ที่เราแยกไว้
-      // และอัปเดต currentIdNum ไปเรื่อยๆ
-      currentIdNum = await insertScheduleToDB(client, schedule, currentIdNum);
+
+      await insertScheduleToDB(client, schedule); 
     }
 
     await client.query('COMMIT'); // ✅ บันทึกจริงเมื่อทำครบทุกรายการ
@@ -323,17 +309,21 @@ export const confirmSchedules = async (req, res) => {
 };
 
 // เมื่อมีการ confirm จะนำข้อมูลส่วนอื่นที่ไม่ซ้ำนำเข้า database
-const insertScheduleToDB = async (client, data, currentIdNum) => {
-  // Generate ID ใหม่ (รับค่าตัวเลขล่าสุดมา + 1)
-  const nextIdNum = currentIdNum + 1;
-  const nextScheduleId = `schedule${String(nextIdNum).padStart(3, '0')}`;
+const insertScheduleToDB = async (client, data) => {
+
+  // UUID  จะได้รหัสยาวๆ เช่น '550e8400-e29b-41d4-a716-446655440000'
+  const scheduleId = crypto.randomUUID(); 
+
+  // สุ่มแบบสั้นๆ 'sch_a1b2c3d4' (ยาว 12 ตัวอักษร)
+  // const randomHex = crypto.randomBytes(4).toString('hex'); 
+  // const scheduleId = `sch_${randomHex}`;
 
   await client.query(
     `INSERT INTO public."Schedules" 
      (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date, temporarily_closed, teacher_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
-      nextScheduleId,
+      scheduleId,
       data.room_id,
       data.subject_name,
       data.teacher_name,
