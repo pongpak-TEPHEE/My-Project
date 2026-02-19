@@ -71,6 +71,7 @@ const formatExcelData = (value, type = 'time') => {
 // อัพโหลดข้อมูล file 
 // มีการป้องกันการชนกันของข้อมูลการจองภายใน file โดยจะมีข้อความแจ้งว่าชนกับห้องไหนบ้าง
 export const importClassSchedules = async (req, res) => {
+  
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'กรุณาอัปโหลดไฟล์ Excel' });
@@ -85,7 +86,7 @@ export const importClassSchedules = async (req, res) => {
        return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
     }
 
-    // --- ส่วนการแปลง Excel ---
+    // ส่วนการแปลง Excel
     const importedData = [];
     let headers = {};
 
@@ -129,18 +130,46 @@ export const importClassSchedules = async (req, res) => {
     const validData = []; 
     const errors = [];
     let successCount = 0; // นับจำนวนคาบที่สร้างได้จริง (ไม่ใช่จำนวนแถว Excel)
+    const getFullNameKey = (name, surname) => {
+      const n = name ? String(name).trim() : "";
+      const s = surname ? String(surname).trim() : "";
+      
+      return `${n} ${s}`.trim(); 
+    };
 
+    const usersResult = await pool.query(`SELECT user_id, name, surname FROM public."Users"`);
+    const userMap = new Map();
+
+    usersResult.rows.forEach(user => {
+        const key = getFullNameKey(user.name, user.surname);
+        if (key) { 
+            userMap.set(key, user.user_id);
+        }
+    });
     // Loop 1: วนตามแถวใน Excel (รายวิชา)
     for (const [index, row] of importedData.entries()) {
         
-        // ดึงข้อมูลพื้นฐาน
+        // ดึงข้อมูลพื้นฐานที่ไม่แปรผัน หรือไม่เปลี่ยนค่าตามเวลา
         const roomId = row.room_id ? String(row.room_id).trim() : null;
         const subjectName = row.subject_name ? String(row.subject_name).trim() : "";
-        const teacherName = row.teacher_name ? String(row.teacher_name).trim() : "";
+        const teacherName = row.name ? String(row.name).trim() : "";
+        const teacherSurname = row.surname ? String(row.surname).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
-        const teacherId = row.user_id ? String(row.user_id).trim() : "";
+
+        const searchKey = getFullNameKey(row.name, row.surname);
+        // 🚨 เพิ่ม 2 บรรทัดนี้เพื่อ Debug
+        console.log(`🔍 กำลังหาชื่อ: [${searchKey}]`); 
+        console.log(`📋 รายชื่อในฐานข้อมูล (5 คนแรก):`, Array.from(userMap.keys()).slice(0, 8));
+        // ค้นหา teacherId จาก userMap โดยใช้ ชื่อและนามสกุล ต่อกัน
+        const teacherId = userMap.get(`${teacherName} ${teacherSurname}`);
         
-        // ✅ แก้ไขตรงนี้ 1: ดึงจำนวนรอบ (repeat) จาก Excel
+        console.log("roomId " , roomId);
+        console.log("subject name " , subjectName);
+        console.log("teacher name " , teacherName);
+        console.log("teacher surname " , teacherSurname);
+        console.log("semester id " , semesterId);
+        console.log("teacher id " , teacherId);
+        
         // - ถ้ามีข้อมูล: ให้แปลงเป็นตัวเลข (parseInt)
         // - ถ้าไม่มีข้อมูล: ให้ Default เป็น 15 (ตามลูปเดิมของคุณ) หรือจะเป็น 1 ก็ได้แล้วแต่ตกลง
         let repeatCount = row.repeat ? parseInt(row.repeat) : 15; 
@@ -165,20 +194,37 @@ export const importClassSchedules = async (req, res) => {
             });
             continue;
         }
+        // ✅ 3. ปรับ Validation ให้เช็คว่า "เจออาจารย์คนนี้ในระบบไหม"
+        if (!roomId || !semesterId || !firstDateRaw || !teacherId) {
+            
+            // แยกข้อความ Error ให้ชัดเจนว่าข้อมูลขาด หรือหาอาจารย์ไม่เจอ
+            let errorMsg = 'ข้อมูลไม่ครบ (ต้องมี room_id, semester_id, date)';
+            let errorType = 'INVALID_DATA';
+
+            if (!teacherId) {
+                errorMsg = `ไม่พบข้อมูลอาจารย์ชื่อ: '${teacherName} ${teacherSurname}' ในระบบ (กรุณาตรวจสอบการสะกดคำ)`;
+                errorType = 'TEACHER_NOT_FOUND';
+            }
+
+            errors.push({ 
+                row: index + 2,
+                room: roomId || 'ไม่ระบุ', 
+                type: errorType,
+                message: errorMsg 
+            });
+            continue;
+        }
 
         const baseDateObj = new Date(firstDateRaw);
 
-        // ✅ แก้ไขตรงนี้ 2: เปลี่ยนเลข 15 เป็นตัวแปร repeatCount
         for (let week = 0; week < repeatCount; week++) {
             try {
                 // คำนวณวันที่ (Logic เดิมถูกต้องแล้วครับ)
                 const targetDateObj = new Date(baseDateObj);
                 targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
                 const targetDate = targetDateObj.toISOString().split('T')[0];
-
-                // ... (Logic การเช็คชน (Conflict Check) เหมือนเดิมทุกประการ) ...
                 
-                // 🛑 CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
+                // ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
                  const scheduleConflictCheck = await pool.query(
                     `SELECT schedule_id, subject_name, start_time, end_time
                      FROM public."Schedules"
@@ -195,7 +241,7 @@ export const importClassSchedules = async (req, res) => {
                     );
                 }
 
-                // 🛑 CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
+                // ตรวจสอบการชนกับ "ตารางการจอง"
                 const bookingConflictCheck = await pool.query(
                     `SELECT booking_id, purpose, start_time, end_time 
                      FROM public."Booking" 
@@ -213,13 +259,13 @@ export const importClassSchedules = async (req, res) => {
                     );
                 }
 
-                // --- ถ้าไม่ชนใครเลย ---
                 validData.push({
                     temp_id: `${index + 1}_w${week + 1}`,
                     week_number: week + 1,
                     room_id: roomId,
                     subject_name: subjectName,
                     teacher_name: teacherName,
+                    teacher_surname: teacherSurname,
                     start_time: startTime,
                     end_time: endTime,
                     semester_id: semesterId,
@@ -231,7 +277,6 @@ export const importClassSchedules = async (req, res) => {
                 successCount++;
 
             } catch (err) {
-                 // ... (Error Handling เหมือนเดิม) ...
                 const targetDateObj = new Date(baseDateObj);
                 targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
                 const dateStr = targetDateObj.toISOString().split('T')[0];

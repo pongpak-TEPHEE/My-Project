@@ -85,7 +85,7 @@ export const requestOTP = async (req, res) => {
 export const verifyOTP = async (req, res) => {
   const { email, otp_code } = req.body;
   
-  // ⚠️ DEBUG: เอาไว้เช็คตอน dev เท่านั้น (ลบออกตอนขึ้นงานจริง)
+  // DEBUG: เอาไว้เช็คตอน dev เท่านั้น (ลบออกตอนขึ้นงานจริง)
   // console.log("Input Debug:", { email, otp_code }); 
 
   try {
