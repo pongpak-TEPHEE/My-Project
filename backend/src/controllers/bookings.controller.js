@@ -1,5 +1,6 @@
 import { pool } from '../config/db.js';
 import { sendBookingStatusEmail } from '../services/mailer.js';
+import crypto from 'crypto'; // ใช้ในการเ้ขารหัส booking_id
 
 
 // /bookings/pending
@@ -280,7 +281,7 @@ export const createBookingForTeacher = async (req, res) => {
 
     // 1. ตรวจสอบว่าห้องว่างไหม?
 
-    // 🛑 DANGER ZONE 1: เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
+    // เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
        FROM public."Schedules"
@@ -300,7 +301,7 @@ export const createBookingForTeacher = async (req, res) => {
       });
     }
 
-    // 🛑 DANGER ZONE 2: เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
+    //  เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
     const bookingConflict = await pool.query(
       `SELECT booking_id, status FROM public."Booking"
        WHERE room_id = $1 
@@ -326,32 +327,24 @@ export const createBookingForTeacher = async (req, res) => {
       });
     }
 
-    // 2. สร้าง Booking ID แบบเรียงลำดับ
-    let newBookingId = 'b0001';
+    // กรณีที่ต้องปรับความยาวของ booking_id
+    // const randomHex = crypto.randomBytes(4).toString('hex'); // จะได้ตัวเลขผสมตัวอักษร 8 ตัว เช่น 'a1b2c3d4'
+    // const newBookingId = `b_${randomHex}`; // ผลลัพธ์ที่ได้จะเป็น 'b_a1b2c3d4'
 
-    const latestBookingResult = await pool.query(
-      `SELECT booking_id FROM public."Booking" ORDER BY booking_id DESC LIMIT 1`
-    );
-
-    if (latestBookingResult.rows.length > 0) {
-      const latestId = latestBookingResult.rows[0].booking_id;
-      const currentNumber = parseInt(latestId.substring(1)); 
-      const nextNumber = currentNumber + 1; 
-      newBookingId = 'b' + nextNumber.toString().padStart(4, '0');
-    }
+    const bookingId = crypto.randomUUID();
 
     // 3. บันทึกข้อมูล
     await pool.query(
       `INSERT INTO public."Booking" 
        (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')`,
-      [newBookingId, room_id, teacher_id, purpose, date, start_time, end_time]
+      [bookingId, room_id, teacher_id, purpose, date, start_time, end_time]
     );
 
     // 4. ส่ง response
     res.status(201).json({ 
         message: 'ส่งคำขอจองสำเร็จ', 
-        bookingId: newBookingId 
+        bookingId: bookingId 
     });
 
   } catch (error) {
