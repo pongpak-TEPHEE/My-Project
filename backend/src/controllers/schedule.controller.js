@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
 import crypto from 'crypto'; // สำหรับเข้าระหัส schedule_id
+import { sendBookingCancelledEmail } from '../services/mailer.js';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelData = (value, type = 'time') => {
@@ -241,24 +242,62 @@ export const importClassSchedules = async (req, res) => {
                     );
                 }
 
-                // ตรวจสอบการชนกับ "ตารางการจอง"
+                // CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
+                // เปลี่ยนจาก NOT IN เป็น IN ('pending', 'approved') เพื่อให้ตรงกับเงื่อนไขที่คุณต้องการ
                 const bookingConflictCheck = await pool.query(
-                    `SELECT booking_id, purpose, start_time, end_time 
-                     FROM public."Booking" 
-                     WHERE room_id = $1 
-                     AND date = $2 
-                     AND status NOT IN ('cancelled', 'rejected') 
-                     AND (start_time < $4 AND end_time > $3)`, 
+                    `SELECT 
+                        b.booking_id, 
+                        b.purpose, 
+                        b.start_time, 
+                        b.end_time, 
+                        u.email, 
+                        u.name, 
+                        u.surname
+                     FROM public."Booking" b
+                     LEFT JOIN public."Users" u ON b.teacher_id = u.user_id
+                     WHERE b.room_id = $1 
+                     AND b.date = $2 
+                     AND b.status IN ('pending', 'approved') 
+                     AND (b.start_time < $4 AND b.end_time > $3)`, 
                     [roomId, targetDate, startTime, endTime]
                 );
 
                 if (bookingConflictCheck.rows.length > 0) {
-                    const conflict = bookingConflictCheck.rows[0];
-                    throw new Error(
-                        `เวลาชนกับการจอง ID: ${conflict.booking_id} (${conflict.purpose} ${conflict.start_time}-${conflict.end_time})`
-                    );
-                }
+                    // หาค่าวันที่ปัจจุบันในรูปแบบ 'YYYY-MM-DD' เพื่อนำมาเทียบ
+                    // การเทียบ String วันที่ในรูปแบบ ISO สามารถใช้เครื่องหมาย > < ได้เลย (เช่น '2026-09-10' > '2026-09-08' จะเป็น true)
+                    const todayStr = new Date().toISOString().split('T')[0];
 
+                    if (targetDate >= todayStr) {
+
+                        for (const conflict of bookingConflictCheck.rows) {
+                            await pool.query(
+                                `UPDATE public."Booking" 
+                                 SET status = 'cancelled' 
+                                 WHERE booking_id = $1`,
+                                [conflict.booking_id]
+                            );
+
+                            const toEmail = conflict.email;
+                            const userName = `${conflict.name || ''} ${conflict.surname || ''}`.trim();
+                            const formattedDate = targetDate.split('-').reverse().join('/'); 
+                            const timeSlotStr = `${conflict.start_time.slice(0, 5)} - ${conflict.end_time.slice(0, 5)}`; 
+                            
+                            if (toEmail) {
+                                sendBookingCancelledEmail(
+                                    toEmail, 
+                                    userName, 
+                                    roomId, 
+                                    formattedDate, 
+                                    timeSlotStr, 
+                                    subjectName
+                                );
+                            }
+                            
+                            console.log(`⚠️ ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
+                            }
+                        }
+                    }
+              
                 validData.push({
                     temp_id: `${index + 1}_w${week + 1}`,
                     week_number: week + 1,
@@ -381,7 +420,7 @@ const insertScheduleToDB = async (client, data) => {
     ]
   );
 
-  return nextIdNum; // ส่งค่าตัวเลขล่าสุดกลับไป เพื่อให้รอบต่อไปนับต่อได้
+     // ส่งค่าตัวเลขล่าสุดกลับไป เพื่อให้รอบต่อไปนับต่อได้
 };
 
 // /schedule/:room_id

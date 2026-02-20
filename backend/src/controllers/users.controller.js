@@ -14,22 +14,42 @@ export const createUser = async (req, res) => {
 
   const { user_id, title, name, surname, role, email } = req.body;
 
+  // ดักให้ต้องใส่เป็น mail.ku.th เท่านั้น
+  if (!email.endsWith('@ku.th')) {
+    return res.status(400).json({ message: 'อนุญาตให้ใช้งานเฉพาะอีเมล @ku.th เท่านั้น' });
+  }
+
+
   // Validation: ตรวจสอบข้อมูลจำเป็น
   if (!user_id || !name || !role || !email) {
     return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน (รหัส, ชื่อ, อีเมล, ตำแหน่ง)' });
   }
 
-  // if ()
-
   try {
-    // 2. เช็คว่ามี User นี้ในระบบหรือยัง (เช็คจาก user_id หรือ email)
+    
+    // 2. เช็คว่ามี User นี้ในระบบหรือยัง (เช็คทั้ง user_id, email และ name+surname)
+    // ใช้ surname || '' เพื่อป้องกัน error กรณีที่ผู้ใช้ไม่มีนามสกุล
     const checkUser = await pool.query(
-      'SELECT user_id FROM public."Users" WHERE user_id = $1 OR email = $2', 
-      [user_id, email]
+      `SELECT user_id, email, name, surname 
+       FROM public."Users" 
+       WHERE user_id = $1 OR email = $2 OR (name = $3 AND surname = $4)`, 
+      [user_id, email, name, surname || '']
     );
 
+    // ถ้าเจอข้อมูลแสดงว่ามีอะไรซ้ำสักอย่าง
     if (checkUser.rows.length > 0) {
-      return res.status(400).json({ message: 'ผู้ใช้งานนี้ (รหัสหรืออีเมล) มีอยู่ในระบบแล้ว' });
+      const existing = checkUser.rows[0];
+      
+      // ดักทีละเคส เพื่อให้แจ้งเตือนได้แม่นยำ
+      if (existing.user_id === user_id) {
+        return res.status(400).json({ message: 'รหัสผู้ใช้งานนี้มีอยู่ในระบบแล้ว' });
+      }
+      if (existing.email === email) {
+        return res.status(400).json({ message: 'อีเมลนี้ถูกใช้งานแล้ว' });
+      }
+      
+      // ถ้าไม่ซ้ำรหัส ไม่ซ้ำอีเมล แสดงว่าชื่อซ้ำแน่นอน
+      return res.status(400).json({ message: `ชื่อและนามสกุล '${name} ${surname || ''}' มีอยู่ในระบบแล้ว` });
     }
 
     // 3. เพิ่มลง Database
