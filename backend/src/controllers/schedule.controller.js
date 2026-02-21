@@ -68,6 +68,8 @@ const formatExcelData = (value, type = 'time') => {
 //     return String(value).trim();
 // }
 
+const emailCooldowns = new Map();
+
 // /schedule/import 
 // อัพโหลดข้อมูล file 
 // มีการป้องกันการชนกันของข้อมูลการจองภายใน file โดยจะมีข้อความแจ้งว่าชนกับห้องไหนบ้าง
@@ -268,7 +270,6 @@ export const importClassSchedules = async (req, res) => {
                     const todayStr = new Date().toISOString().split('T')[0];
 
                     if (targetDate >= todayStr) {
-
                         for (const conflict of bookingConflictCheck.rows) {
                             await pool.query(
                                 `UPDATE public."Booking" 
@@ -280,41 +281,57 @@ export const importClassSchedules = async (req, res) => {
                             const toEmail = conflict.email;
                             const userName = `${conflict.name || ''} ${conflict.surname || ''}`.trim();
                             const formattedDate = targetDate.split('-').reverse().join('/'); 
-                            const timeSlotStr = `${conflict.start_time.slice(0, 5)} - ${conflict.end_time.slice(0, 5)}`; 
-                            
-                            if (toEmail) {
-                                sendBookingCancelledEmail(
-                                    toEmail, 
-                                    userName, 
-                                    roomId, 
-                                    formattedDate, 
-                                    timeSlotStr, 
-                                    subjectName
-                                );
+                            const timeSlotStr = `${conflict.start_time.slice(0, 5)} - ${conflict.end_time.slice(0, 5)}`;
+
+                            // สร้าง Key เฉพาะสำหรับการยกเลิกด้วยตารางเรียน เช่น "booking_cancel_conflict_b0001"
+                            const cooldownKey = `booking_cancel_conflict_${conflict.booking_id}`; 
+                            const COOLDOWN_MINUTES = 5; // ห้ามส่งอีเมลซ้ำสำหรับ Booking ID นี้ ภายใน 5 นาที
+                            let shouldSendEmail = true;
+
+                            if (emailCooldowns.has(cooldownKey)) {
+                                const lastSentTime = emailCooldowns.get(cooldownKey);
+                                const diffMinutes = (Date.now() - lastSentTime) / (1000 * 60);
+
+                                if (diffMinutes < COOLDOWN_MINUTES) {
+                                    shouldSendEmail = false;
+                                    console.log(`⏳ [Rate Limit] ข้ามการส่งเมลยกเลิกอัตโนมัติให้ ${toEmail} (เพิ่งส่งไปเมื่อ ${diffMinutes.toFixed(1)} นาทีที่แล้ว)`);
+                                }
                             }
                             
+                            if (toEmail && shouldSendEmail) {
+                              // บันทึกเวลาที่ส่งลง Map
+                              emailCooldowns.set(cooldownKey, Date.now());
+
+                              sendBookingCancelledEmail(
+                                  toEmail, 
+                                  userName, 
+                                  roomId, 
+                                  formattedDate, 
+                                  timeSlotStr, 
+                                  subjectName
+                              );
+                              
+                              console.log(`📧 สั่งส่งอีเมลแจ้งยกเลิก Booking ID: ${conflict.booking_id} ไปที่ ${toEmail} เรียบร้อยแล้ว`);
+                            }
                             console.log(`⚠️ ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
-                            }
+                          }
                         }
                     }
-              
-                validData.push({
-                    temp_id: `${index + 1}_w${week + 1}`,
-                    week_number: week + 1,
-                    room_id: roomId,
-                    subject_name: subjectName,
-                    teacher_name: teacherName,
-                    teacher_surname: teacherSurname,
-                    start_time: startTime,
-                    end_time: endTime,
-                    semester_id: semesterId,
-                    temporarily_closed: false,
-                    teacher_id: teacherId,
-                    date: targetDate
-                });
-
-                successCount++;
-
+              validData.push({
+                  temp_id: `${index + 1}_w${week + 1}`,
+                  week_number: week + 1,
+                  room_id: roomId,
+                  subject_name: subjectName,
+                  teacher_name: teacherName,
+                  teacher_surname: teacherSurname,
+                  start_time: startTime,
+                  end_time: endTime,
+                  semester_id: semesterId,
+                  temporarily_closed: false,
+                  teacher_id: teacherId,
+                  date: targetDate
+              });
+              successCount++;
             } catch (err) {
                 const targetDateObj = new Date(baseDateObj);
                 targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
@@ -404,13 +421,14 @@ const insertScheduleToDB = async (client, data) => {
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date, temporarily_closed, teacher_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       scheduleId,
       data.room_id,
       data.subject_name,
       data.teacher_name,
+      data.teacher_surname,
       data.start_time,
       data.end_time,
       data.semester_id,
@@ -496,7 +514,8 @@ export const getAllSchedules = async (req, res) => {
         schedule_id, 
         room_id,
         subject_name, 
-        teacher_name, 
+        teacher_name,
+        teacher_surname,
         start_time, 
         end_time, 
         semester_id, 

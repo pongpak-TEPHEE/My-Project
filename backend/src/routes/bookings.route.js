@@ -58,7 +58,7 @@ router.put('/:id/cancel', authenticateToken, cancelBooking);
 router.put('/:id', authenticateToken, authorizeRole('teacher', 'staff'), editBooking);
 
 // ใช้เมื่อเราแสกน QR-Code จะเด้งไปหมายเลขห้องทีอยู่ใน QR code
-router.get('/:id', authenticateToken, getRoomStatus)
+router.get('/:id', getRoomStatus);
 
 // ดึงรายการที่เวลาที่จองยังอยู่ในอนาคต และเป็น status approved, padding
 router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), getMyActiveBookings);

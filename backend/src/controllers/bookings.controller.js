@@ -193,7 +193,7 @@ export const getApprovedBookings = async (req, res) => {
 // /bookings/:id
 // ใช้เมื่อสแกร QR code ห้องระบบ frontend จะส่ง room_id มาตรวจสอบหลังบ้านว่าห้องนี้เวลานี้ห้องว่างไหม ณ ขณะ ที่เราแสกน
 export const getRoomStatus = async (req, res) => {
-  const { id } = req.params; // นี่คือ room_id (เช่น 26504)
+  const { id } = req.params;
 
   // ถ้าไม่ส่งวันที่มา ให้ใช้วันปัจจุบัน
   const queryDate =  new Date().toISOString().split('T')[0];
@@ -251,14 +251,48 @@ export const getRoomStatus = async (req, res) => {
   }
 };
 
+// ฟังก์ชันแปลงเวลา "HH:mm" เป็นจำนวนนาทีรวม
+const timeToMinutes = (timeStr) => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return (hours * 60) + (minutes || 0); // เผื่อกรณีส่งมาแค่ "10"
+};
+
 // /bookings/teacher
 // สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
-  const teacher_id = req.user.user_id; 
+  const teacher_id = req.user.user_id;
+
+  // แปลงเวลาเป็นนาที
+  const startMins = timeToMinutes(start_time);
+  const endMins = timeToMinutes(end_time);
+
+  // Business Logic: จำกัดเวลาจองสูงสุด (Max Duration)
+  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 6 ชม. ในหนึ่งครั้ง
+  const MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
+  const bookingDuration = endMins - startMins;
+
+  if (bookingDuration > MAX_DURATION_MINUTES) {
+    return res.status(400).json({ 
+      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)` 
+    });
+  }
+
+  // Business Logic: ห้ามจองล่วงหน้านาน
+  const MAX_ADVANCE_DAYS = 10; // สมมติให้จองล่วงหน้าได้ไม่เกิน 10 วัน
+  const bookingDate = new Date(date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // รีเซ็ตเวลาเป็นเที่ยงคืนเพื่อเทียบแค่วันที่
+
+  const diffTime = bookingDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays > MAX_ADVANCE_DAYS) {
+    return res.status(400).json({ message: `สามารถจองล่วงหน้าได้ไม่เกิน ${MAX_ADVANCE_DAYS} วันเท่านั้น` });
+  }
 
   try {
-    // 0. ตรวจสอบเรื่องเวลา (Standardization)
+    // ตรวจสอบเรื่องเวลา (Standardization)
 
     const now = new Date();
     const bookingDate = new Date(date);
@@ -269,7 +303,7 @@ export const createBookingForTeacher = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     bookingDate.setHours(0, 0, 0, 0);
 
-    // 0.1 ห้ามจองย้อนหลัง (อดีต)
+    // ห้ามจองย้อนหลัง
     if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
     }
@@ -280,7 +314,6 @@ export const createBookingForTeacher = async (req, res) => {
     }
 
     // 1. ตรวจสอบว่าห้องว่างไหม?
-
     // เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
@@ -357,14 +390,41 @@ export const createBookingForTeacher = async (req, res) => {
 // สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForStaff = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
+
+  // แปลงเวลาเป็นนาที
+  const startMins = timeToMinutes(start_time);
+  const endMins = timeToMinutes(end_time);
+
+  // Business Logic: จำกัดเวลาจองสูงสุด (Max Duration)
+  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 6 ชม. ในหนึ่งครั้ง
+  const MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
+  const bookingDuration = endMins - startMins;
+
+  if (bookingDuration > MAX_DURATION_MINUTES) {
+    return res.status(400).json({ 
+      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)` 
+    });
+  }
+
+  // Business Logic: ห้ามจองล่วงหน้านาน
+  const MAX_ADVANCE_DAYS = 10; // สมมติให้จองล่วงหน้าได้ไม่เกิน 10 วัน
+  const bookingDate = new Date(date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // รีเซ็ตเวลาเป็นเที่ยงคืนเพื่อเทียบแค่วันที่
+
+  const diffTime = bookingDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays > MAX_ADVANCE_DAYS) {
+    return res.status(400).json({ message: `สามารถจองล่วงหน้าได้ไม่เกิน ${MAX_ADVANCE_DAYS} วันเท่านั้น` });
+  }
   
   // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (teacher_id) และผู้อนุมัติ (approved_by)
   const staff_id = req.user.user_id; 
 
   try {
 
-    // 0. ตรวจสอบเรื่องเวลา (Standardization)
-
+    // ตรวจสอบเรื่องเวลา (Standardization)
     const now = new Date();
     const bookingDate = new Date(date);
     const bookingStart = new Date(`${date}T${start_time}`);
@@ -374,7 +434,7 @@ export const createBookingForStaff = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     bookingDate.setHours(0, 0, 0, 0);
 
-    // 0.1 ห้ามจองย้อนหลัง (อดีต)
+    // ห้ามจองย้อนหลัง
     if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
     }
@@ -478,35 +538,28 @@ export const createBookingForStaff = async (req, res) => {
   }
 };
 
+// ประกาศตัวแปร Map ไว้ด้านบนสุดของไฟล์ (นอกฟังก์ชัน Controller)
+// เพื่อให้มันจำค่าไว้ใน RAM ของ Server ตลอดเวลาที่ Server รันอยู่
+const emailCooldowns = new Map();
+
 // /bookings/:id/status
 // อัปเดตสถานะการจอง (Approve / Reject) for role staff only !!!!!!
 export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
-
+  const { status, reject_reason } = req.body; // รับ reject_reason มาด้วยเผื่อกรณีปฏิเสธ
 
   if (!['approved', 'rejected', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
   }
 
   try {
-    // 1. อัปเดตสถานะลง DB
     const updateResult = await pool.query(
       `UPDATE public."Booking" 
-       SET status = $1
-       WHERE booking_id = $2 
+       SET status = $1, approved_by = $2
+       WHERE booking_id = $3 
        RETURNING *`, 
-      [status, id]
+      [status, req.user.user_id, id]
     );
-    
-    await pool.query(
-      `UPDATE public."Booking" 
-       SET approved_by = $1
-       WHERE booking_id = $2 
-       RETURNING *`, 
-      [req.user.user_id, id]
-    );
-
 
     if (updateResult.rowCount === 0) {
       return res.status(404).json({ message: 'ไม่พบรายการจองนี้' });
@@ -514,9 +567,9 @@ export const updateBookingStatus = async (req, res) => {
 
     const booking = updateResult.rows[0];
 
-    //2. ดึงข้อมูลเพิ่มเติมเพื่อเตรียมส่งเมล (อีเมลผู้จอง + ชื่อห้อง)
+    // 2. ดึงข้อมูลเพิ่มเติมเพื่อเตรียมส่งเมล
     const details = await pool.query(
-      `SELECT u.email
+      `SELECT u.email, r.room_name
        FROM public."Booking" b
        JOIN public."Users" u ON b.teacher_id = u.user_id
        JOIN public."Rooms" r ON b.room_id = r.room_id
@@ -527,15 +580,39 @@ export const updateBookingStatus = async (req, res) => {
     if (details.rows.length > 0) {
       const { email, room_name } = details.rows[0];
 
-      //3. ส่งเมล (ยิงแล้วลืมเลย ไม่ต้องรอ await ก็ได้เพื่อให้ response เร็ว)
-      sendBookingStatusEmail(email, {
-        status: status,
-        room_name: room_name,
-        date: booking.date,
-        start_time: booking.start_time,
-        end_time: booking.end_time,
-        reject_reason: '' // ถ้ามีระบบใส่เหตุผลการปฏิเสธ ค่อยส่งมาตรงนี้ครับ
-      });
+      // ระบบ Rate Limit สำหรับการส่งอีเมล (Anti-Spam)
+      // สร้าง Key เฉพาะตัว เช่น "booking_b0001_approved"
+      const cooldownKey = `booking_${id}_${status}`; 
+      const COOLDOWN_MINUTES = 5; // ห้ามส่งอีเมลสถานะเดิมซ้ำ ภายใน 5 นาที
+
+      let shouldSendEmail = true;
+
+      if (emailCooldowns.has(cooldownKey)) {
+        const lastSentTime = emailCooldowns.get(cooldownKey);
+        const diffMinutes = (Date.now() - lastSentTime) / (1000 * 60);
+
+        if (diffMinutes < COOLDOWN_MINUTES) {
+          shouldSendEmail = false;
+          console.log(`⏳ [Rate Limit] ป้องกันการ Spam: ข้ามการส่งเมลสถานะ ${status} ให้ ${email} (เพิ่งส่งไปเมื่อ ${diffMinutes.toFixed(1)} นาทีที่แล้ว)`);
+        }
+      }
+
+      // สั่งส่งอีเมล (ถ้าผ่านเงื่อนไข)
+      if (shouldSendEmail) {
+        emailCooldowns.set(cooldownKey, Date.now());
+
+        // 3. ส่งเมล (ยิงแล้วลืมเลย ไม่ต้องรอ await ก็ได้เพื่อให้ response เร็ว)
+        sendBookingStatusEmail(email, {
+          status: status,
+          room_name: room_name, // ตอนนี้มีค่าแล้ว เพราะแก้ SQL ให้
+          date: booking.date,
+          start_time: booking.start_time,
+          end_time: booking.end_time,
+          reject_reason: reject_reason || '' // รับค่าจาก req.body ถ้ามี
+        });
+
+        console.log(`📧 สั่งส่งอีเมลแจ้งสถานะ ${status} ไปที่ ${email} เรียบร้อยแล้ว`);
+      }
     }
 
     res.json({ 
@@ -712,8 +789,7 @@ export const editBooking = async (req, res) => {
   }
 
   try {
-
-    // STEP 1: ดึงข้อมูลเก่ามาก่อน (เพื่อเช็คสิทธิ์ และเอา room_id)
+    //1: ดึงข้อมูลเก่ามาก่อน (เพื่อเช็คสิทธิ์ และเอา room_id)
     const oldBookingResult = await pool.query(
       `SELECT * FROM public."Booking" WHERE booking_id = $1`,
       [id]
@@ -726,7 +802,7 @@ export const editBooking = async (req, res) => {
     const oldBooking = oldBookingResult.rows[0];
     const roomId = oldBooking.room_id; // ต้องใช้ room_id จาก database
 
-    // STEP 2: ตรวจสอบสิทธิ์ (เจ้าของ หรือ staff เท่านั้น)
+    //2: ตรวจสอบสิทธิ์ (เจ้าของ หรือ staff เท่านั้น)
     // user_id ของคนที่จองและ user_id ของคนที่แก้ไขต้องตรงกัน
     if (oldBooking.teacher_id !== user_id) {
       return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขการจองของคนอื่น' });
@@ -737,7 +813,7 @@ export const editBooking = async (req, res) => {
         return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้' });
     }
 
-    // STEP 3: ตรวจสอบเวลาชน (Collision Check) 🛑
+    //3: ตรวจสอบเวลาชน (Collision Check)
     // 3.1 เช็คชนกับ "ตารางเรียน (Schedule)"
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
@@ -773,7 +849,7 @@ export const editBooking = async (req, res) => {
       });
     }
 
-    // STEP 4: อัปเดตข้อมูล (Update) ✅
+    // STEP 4: อัปเดตข้อมูล (Update)
     // ต้องรีเซ็ตสถานะเป็น 'pending' เสมอ เพราะมีการเปลี่ยนเวลา/จุดประสงค์
     // (ยกเว้น Admin แก้เอง อาจจะให้ Approved เลยก็ได้ แล้วแต่ Logic)
     
@@ -846,9 +922,7 @@ export const getMyBookingHistory = async (req, res) => {
   const { user_id } = req.user;
 
   try {
-    // ---------------------------------------------------------
     // Query 1: ดึงจากตาราง Booking + JOIN Users
-    // ---------------------------------------------------------
     const bookingQuery = pool.query(
       `SELECT 
           b.booking_id, 

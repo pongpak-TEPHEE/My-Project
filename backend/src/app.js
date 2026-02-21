@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import { globalLimiter } from './middleware/rateLimiter.js'
 
 const app = express();
 app.use(helmet()); // ปิดบัง Server Info และกัน XSS เบื้องต้น
@@ -15,11 +15,7 @@ app.use(cors({
 }));
 
 
-const globalLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 นาที
-  max: 60, // อนุญาตให้ยิง API ได้ 100 ครั้งต่อนาที (ต่อ IP)
-  message: { message: 'Too many requests, please try again later.' }
-});
+
 
 app.set('trust proxy', 1);
 app.use(globalLimiter);
