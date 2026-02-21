@@ -12,13 +12,30 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    const secretKey = process.env.JWT_SECRET || 'your_secret_key';
+    
+    // ถอดรหัส Token
+    const decodedTK = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 2. ✅ (สำคัญ) ตรวจสอบ Signature และวันหมดอายุก่อน!
+    // เช็คว่า User คนนี้ยัง "มีตัวตน" และ "ใช้งานได้" อยู่หรือไม่
+    const userCheck = await pool.query(
+      `SELECT is_active FROM public."Users" WHERE user_id = $1`,
+      [decodedTK.user_id]
+    );
+
+    if (userCheck.rows.length === 0) {
+      return res.status(401).json({ message: 'ไม่พบผู้ใช้งานนี้ในระบบแล้ว' });
+    }
+
+    if (userCheck.rows[0].is_active === false) {
+      return res.status(403).json({ message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่' });
+    }
+
+    const secretKey = process.env.JWT_SECRET || 'your_secret_key';
+    // ตรวจสอบ Signature และวันหมดอายุ
     // ถ้า Token มั่ว หรือหมดอายุ มันจะ Error เด้งไป catch ทันที (ไม่ต้องเสียเวลาเช็ค DB)
     const decoded = jwt.verify(token, secretKey);
 
-    // 3. ✅ ค่อยเช็ค Blacklist (ถ้า Token ถูกต้องตามรูปแบบ ค่อยมาเช็คว่าโดนแบนไหม)
+    // เช็ค Blacklist (ถ้า Token ถูกต้องตามรูปแบบ ค่อยมาเช็คว่าโดนแบนไหม)
     const blacklistCheck = await pool.query(
       'SELECT token FROM public."TokenBlacklist" WHERE token = $1',
       [token]
@@ -28,7 +45,7 @@ export const authenticateToken = async (req, res, next) => {
       return res.status(403).json({ message: 'Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)' });
     }
 
-    // 4. แนบข้อมูลผู้ใช้
+    // แนบข้อมูลผู้ใช้
     // ⚠️ หมายเหตุ: ข้อมูลใน decoded จะมาจากตอนที่เรา jwt.sign
     // จากโค้ด verifyOTP ก่อนหน้านี้ เราใช้ 'user_id' ดังนั้นเรียกใช้ต้อง req.user.user_id นะครับ
     req.user = decoded;

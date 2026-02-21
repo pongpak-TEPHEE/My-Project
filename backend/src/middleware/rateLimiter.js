@@ -16,3 +16,12 @@ export const otpRateLimiter = rateLimit({
   legacyHeaders: false, // ปิดการใช้ Header เก่า
 });
 
+export const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 นาที
+  max: 5, // อนุญาตให้พยายามกรอกรหัส (หรือ OTP) ผิดได้สูงสุด 5 ครั้ง
+  message: {
+    message: 'คุณพยายามเข้าสู่ระบบล้มเหลวหลายครั้งเกินไป กรุณารอ 15 นาทีแล้วลองใหม่'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

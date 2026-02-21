@@ -3,7 +3,6 @@ import jwt from 'jsonwebtoken'; // โมดูลสำหรับสร้า
 import crypto from 'crypto'; // โมดูลสำหรับสร้างตัวเลขสุ่มและ UUID ของ Node.js
 import { sendOTPEmail } from '../services/mailer.js';
 
-
 // /auth/request-otp
 // ขอ OTP ส่งไปยัง email.ku.th
 export const requestOTP = async (req, res) => {
@@ -88,7 +87,7 @@ export const verifyOTP = async (req, res) => {
   // console.log("Input Debug:", { email, otp_code }); 
 
   try {
-    // 1. ค้นหา OTP ที่ถูกต้องและยังไม่หมดอายุ
+    //  ค้นหา OTP ที่ถูกต้องและยังไม่หมดอายุ
     const otpResult = await pool.query(
       `SELECT * FROM public."OTP" 
        WHERE email = $1 AND otp_code = $2 AND expired_at > NOW()`,
@@ -99,7 +98,7 @@ export const verifyOTP = async (req, res) => {
       return res.status(400).json({ message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุ' });
     }
 
-    // 2. ดึงข้อมูล User
+    // ดึงข้อมูล User
     const userResult = await pool.query(
       'SELECT user_id, name, surname, role FROM public."Users" WHERE email = $1',
       [email]
@@ -111,7 +110,7 @@ export const verifyOTP = async (req, res) => {
 
     const user = userResult.rows[0];
 
-    // 3. ✅ สร้าง JWT Token 
+    // สร้าง JWT Token 
     // (แก้ไขชื่อ key ให้เป็น 'user_id' เพื่อให้ตรงกับ Middleware)
     const token = jwt.sign(
       { 
@@ -123,16 +122,16 @@ export const verifyOTP = async (req, res) => {
       { expiresIn: '1d' } // อายุ 1 วัน
     );
 
-    // 4. อัปเดตสถานะว่ายืนยันตัวตนแล้ว
+    // อัปเดตสถานะว่ายืนยันตัวตนแล้ว
     await pool.query(
         'UPDATE public."Users" SET is_verified = TRUE WHERE email = $1',
         [email]
     );
 
-    // 5. ลบ OTP ทิ้งทันที (One-Time จริงๆ)
+    //  ลบ OTP ทิ้งทันที (One-Time จริงๆ)
     await pool.query('DELETE FROM public."OTP" WHERE email = $1', [email]);
 
-    // 6. ส่ง Response กลับไป
+    //  ส่ง Response กลับไป
     res.json({
       message: 'เข้าสู่ระบบสำเร็จ',
       token, // ส่ง Token
