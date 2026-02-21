@@ -247,8 +247,6 @@ export const createRoom = async (req, res) => {
     equipments // เป็นชนิดข้อมูลแบบ object อยากต้องระวังหากมีการสร้าง form
   } = req.body;
 
-  console.log("req.body : ", req.body);
-
   // เราต้องใช้ client เพื่อทำ Transaction (การันตีว่าถ้าบันทึกไม่ครบทั้ง 2 ตาราง ให้ยกเลิกทั้งหมด)
   const client = await pool.connect();
 
@@ -409,14 +407,15 @@ export const editRoom = async (req, res) => {
     equipments 
   } = req.body;
 
-  console.log("equipments : ", equipments);
+  if (capacity < 0) {
+    return res.status(404).json({ message: 'กรุณาใส่ความจุที่มากกว่า 0' });
+  };
 
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN'); // เริ่ม Transaction
 
-    // 🛡️ Logic พิเศษ: ถ้าสั่งปิดห้อง
     // ต้องเคลียร์การจองในอนาคตออกให้หมด เพื่อไม่ให้ข้อมูลค้าง
     if (repair === false) {
        await client.query(
@@ -429,8 +428,7 @@ export const editRoom = async (req, res) => {
        );
     }
 
-
-    // STEP 1: อัปเดตข้อมูลห้อง
+    // อัปเดตข้อมูลห้อง
     const updateRoomResult = await client.query(
       `UPDATE public."Rooms" 
        SET room_type = $1, 
@@ -455,9 +453,8 @@ export const editRoom = async (req, res) => {
     }
 
 
-    // STEP 2: อัปเดตอุปกรณ์ (เหมือนเดิม)
+    // อัปเดตอุปกรณ์ (เหมือนเดิม)
     if (equipments) {
-      // 2.1 ลอง Update ก่อน
       const updateEqResult = await client.query(
         `UPDATE public."Equipment"
          SET projector = $1, microphone = $2, computer = $3, whiteboard = $4, type_of_computer = $5

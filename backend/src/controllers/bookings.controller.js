@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js';
 import { sendBookingStatusEmail } from '../services/mailer.js';
 import crypto from 'crypto'; // ใช้ในการเ้ขารหัส booking_id
+import { logger } from '../utils/logger.js';
 
 
 // /bookings/pending
@@ -49,7 +50,6 @@ export const getPendingBookings = async (req, res) => {
        end_time: String(row.end_time).substring(0, 5)
     }));
 
-    // console.log("ข้อมูลที่ดึง : ", formattedBookings);
     res.json(formattedBookings);
 
   } catch (error) {
@@ -114,7 +114,6 @@ export const getRejectedBookings = async (req, res) => {
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
        end_time: String(row.end_time).substring(0, 5)
     }));
-    // console.log("ข้อมูลที่ดึง : ", formattedBookings);
     res.json(formattedBookings);
 
   } catch (error) {
@@ -181,7 +180,6 @@ export const getApprovedBookings = async (req, res) => {
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
        end_time: String(row.end_time).substring(0, 5)
     }));
-    // console.log("ข้อมูลที่ดึง : ", formattedBookings);
     res.json(formattedBookings);
 
   } catch (error) {
@@ -321,7 +319,8 @@ export const createBookingForTeacher = async (req, res) => {
        WHERE room_id = $1
        AND date = $2
        AND (start_time < $4 AND end_time > $3)
-       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`,
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)
+       FOR UPDATE`,
       [room_id, date, start_time, end_time]
     );
 
@@ -340,7 +339,8 @@ export const createBookingForTeacher = async (req, res) => {
        WHERE room_id = $1 
        AND date = $2 
        AND (start_time < $4 AND end_time > $3)
-       AND status IN ('approved', 'pending')`,
+       AND status IN ('approved', 'pending')
+       FOR UPDATE`,
       [room_id, date, start_time, end_time] 
     );
     
@@ -513,8 +513,6 @@ export const createBookingForStaff = async (req, res) => {
       newBookingId = 'b' + nextNumber.toString().padStart(4, '0');
     }
 
-    console.log(`New Booking ID (Staff): ${newBookingId}`);
-
     // -----------------------------------------------------------------------
     // 3. บันทึกข้อมูล (Status = approved)
     // -----------------------------------------------------------------------
@@ -618,6 +616,14 @@ export const updateBookingStatus = async (req, res) => {
     res.json({ 
       message: `อัปเดตสถานะเป็น ${status} เรียบร้อยแล้ว`, 
       booking: booking 
+    });
+
+    // บันทึกการกระทำที่สำคัญ
+    logger.info('Booking Status Changed', {
+      action_by_user_id: req.user.user_id, // Staff คนไหนกด
+      target_booking_id: id,
+      new_status: status,
+      ip: req.ip
     });
 
   } catch (error) {
@@ -725,9 +731,6 @@ export const cancelBooking = async (req, res) => {
   console.log("cancel is activate!!!");
   const { id } = req.params; // Booking ID ที่จะยกเลิก
   const teacher_id = req.user.user_id; // ต้องเป็นเจ้าของรายการเท่านั้นถึงจะลบได้
-
-  console.log("id : ", id);
-  console.log("teacher id : ", teacher_id);
    
   try {
     // 2.1 ตรวจสอบก่อนว่ารายการนี้เป็นของคนนี้จริงไหม + สถานะยกเลิกได้ไหม
@@ -782,8 +785,6 @@ export const editBooking = async (req, res) => {
   const { purpose, date, start_time, end_time } = req.body;
   const { user_id, role } = req.user; // จาก Token
 
-  // console.log("user_id, role : ", req.user)
-  // Validation เบื้องต้น
   if (!purpose || !date || !start_time || !end_time) {
     return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
   }
@@ -906,8 +907,6 @@ export const getMyActiveBookings = async (req, res) => {
       end_time: String(row.end_time).substring(0, 5),
       can_edit_delete: true 
     }));
-
-    console.log("booking : ",bookings);
     res.json(bookings);
 
   } catch (error) {
@@ -1001,8 +1000,6 @@ export const getMyBookingHistory = async (req, res) => {
         if (dateB - dateA !== 0) return dateB - dateA; 
         return a.start_time.localeCompare(b.start_time);
     });
-
-    // console.log("all history : ", allHistory);
 
     res.json(allHistory);
 

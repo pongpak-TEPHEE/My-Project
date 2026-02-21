@@ -64,9 +64,6 @@ export const requestOTP = async (req, res) => {
       // ถ้าส่งไม่ผ่าน ให้แจ้ง Error กลับไปเลย
       return res.status(500).json({ message: 'เกิดข้อผิดพลาดในการส่งอีเมล OTP' });
     }
-
-    // ถ้าส่งผ่าน ก็ตอบกลับ Frontend
-    console.log(`[LOG] OTP sent to ${email} successfully`);
     
     res.json({ 
         message: `ส่งรหัส OTP ไปที่ ${email} เรียบร้อยแล้ว`, 
@@ -82,9 +79,6 @@ export const requestOTP = async (req, res) => {
 // รับ OTP ที่ USER กรอกมาเพื่อ recheck กับ database
 export const verifyOTP = async (req, res) => {
   const { email, otp_code } = req.body;
-  
-  // DEBUG: เอาไว้เช็คตอน dev เท่านั้น (ลบออกตอนขึ้นงานจริง)
-  // console.log("Input Debug:", { email, otp_code }); 
 
   try {
     //  ค้นหา OTP ที่ถูกต้องและยังไม่หมดอายุ

@@ -166,13 +166,6 @@ export const importClassSchedules = async (req, res) => {
         // ค้นหา teacherId จาก userMap โดยใช้ ชื่อและนามสกุล ต่อกัน
         const teacherId = userMap.get(`${teacherName} ${teacherSurname}`);
         
-        console.log("roomId " , roomId);
-        console.log("subject name " , subjectName);
-        console.log("teacher name " , teacherName);
-        console.log("teacher surname " , teacherSurname);
-        console.log("semester id " , semesterId);
-        console.log("teacher id " , teacherId);
-        
         // - ถ้ามีข้อมูล: ให้แปลงเป็นตัวเลข (parseInt)
         // - ถ้าไม่มีข้อมูล: ให้ Default เป็น 15 (ตามลูปเดิมของคุณ) หรือจะเป็น 1 ก็ได้แล้วแต่ตกลง
         let repeatCount = row.repeat ? parseInt(row.repeat) : 15; 
@@ -572,10 +565,6 @@ export const updateScheduleStatus = async (req, res) => {
   // ดึง user_id และ role จาก Token
   // user_id นี้คือ ID ของคนที่กำลังกดปุ่มอยู่ตอนนี้
   const { user_id, role } = req.user;
-
-
-  console.log("user_id : ", user_id);
-  console.log("user_id : ", role);
 
   // ตรวจสอบ Input
   if (typeof temporarily_closed !== 'boolean') {

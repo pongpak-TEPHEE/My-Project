@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/db.js';
+import { logger } from '../utils/logger.js';
 
 // ฟังก์ชันสำหรับ "ตรวจบัตรผ่าน" (Token)
 export const authenticateToken = async (req, res, next) => {
@@ -67,6 +68,15 @@ export const authenticateToken = async (req, res, next) => {
 export const authorizeRole = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
+
+      //  บันทึกว่ามีการพยายามละเมิดสิทธิ์ (Access Denied)
+      logger.warn('Unauthorized Access Attempt', {
+        user_id: req.user ? req.user.user_id : 'Guest',
+        role: req.user ? req.user.role : 'None',
+        attempted_url: req.originalUrl,
+        method: req.method,
+        ip: req.ip
+      });
         return res.status(401).json({ message: 'User not authenticated' });
     }
 
