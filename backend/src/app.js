@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { globalLimiter } from './middleware/rateLimiter.js'
+import { globalErrorHandler } from './middleware/errorHandler.js'
 
 const app = express();
 app.use(helmet()); // ปิดบัง Server Info และกัน XSS เบื้องต้น
@@ -42,6 +43,17 @@ app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/rooms', roomsRoutes);
 app.use('/bookings', bookingsRoutes);
-app.use('/schedules', scheduleRoutes)
+app.use('/schedules', scheduleRoutes);
+
+// ดักจับ 404 Not Found (ถ้าไม่เข้า Route ด้านบนเลย จะมาตกตรงนี้)
+app.use((req, res, next) => {
+  res.status(404).json({ 
+    status: 'error',
+    message: 'ไม่พบเส้นทาง API ที่ท่านเรียกใช้งาน (404 Not Found)' 
+  });
+});
+
+// Global Error Handler (ต้องอยู่ล่างสุดเสมอ!)
+app.use(globalErrorHandler);
 
 export default app; // ส่งออก app เพื่อให้ main.js ใช้งานต่อ
