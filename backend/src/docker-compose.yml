@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # กล่องที่ 1: Database (PostgreSQL)
+  db:
+    image: postgres:17-alpine
+    container_name: booking_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: iohdjfgoidsffoi09332jksdfmsdqpj4894914757dufgkjg
+      POSTGRES_DB: kusrc_sci_book_rooms
+    ports:
+       - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # docker exec -t booking_db pg_dump -U postgres -d kusrc_sci_book_rooms > backup_data.sql   # พิมพ์ใน terminal เพื่อดึงข้อมูล db ใน sql ออกมา
+
+  # กล่องที่ 2: Backend (Node.js ของเรา)
+  api:
+    build: .
+    container_name: booking_api
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:iohdjfgoidsffoi09332jksdfmsdqpj4894914757dufgkjg@db:5432/kusrc_sci_book_rooms
+      - PORT=3000
+      - JWT_SECRET=ihsluuslenbvedlislci65fdUHAL989sdgouuhodsfhgohdflkjenigs34573945dhfgihdnskjfgng
+      - EMAIL_USER=pongpak.te@ku.th
+      - EMAIL_PASS=piualufjdooyryep
+    depends_on:
+      - db
+volumes:
+  pgdata:

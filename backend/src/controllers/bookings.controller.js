@@ -567,7 +567,7 @@ export const updateBookingStatus = async (req, res) => {
 
     // 2. ดึงข้อมูลเพิ่มเติมเพื่อเตรียมส่งเมล
     const details = await pool.query(
-      `SELECT u.email, r.room_name
+      `SELECT u.email, r.room_id
        FROM public."Booking" b
        JOIN public."Users" u ON b.teacher_id = u.user_id
        JOIN public."Rooms" r ON b.room_id = r.room_id
@@ -709,7 +709,7 @@ export const getMyBookings = async (req, res) => {
          b.purpose, 
          b.status,
          b.reject_reason,
-         r.room_name
+         r.room_id
        FROM public."Booking" b
        JOIN public."Rooms" r ON b.room_id = r.room_id
        WHERE b.teacher_id = $1
@@ -728,21 +728,21 @@ export const getMyBookings = async (req, res) => {
 // /bookings/:id/cancel
 // ยกเลิกการจอง (Cancel Booking)
 export const cancelBooking = async (req, res) => {
-  console.log("cancel is activate!!!");
   const { id } = req.params; // Booking ID ที่จะยกเลิก
   const teacher_id = req.user.user_id; // ต้องเป็นเจ้าของรายการเท่านั้นถึงจะลบได้
-   
+  const userRole = req.user.role;
+
   try {
     // 2.1 ตรวจสอบก่อนว่ารายการนี้เป็นของคนนี้จริงไหม + สถานะยกเลิกได้ไหม
     const checkQuery = await pool.query(
       `SELECT * FROM public."Booking" 
-       WHERE booking_id = $1 AND teacher_id = $2`,
-      [id, teacher_id]
+       WHERE booking_id = $1 
+       AND (teacher_id = $2 OR $3 = 'staff')`, // 🛡️ เพิ่มเงื่อนไข OR ตรงนี้
+      [id, teacher_id, userRole] // ส่ง role เข้าไปเป็น Parameter ที่ 3
     );
 
     if (checkQuery.rows.length === 0) {
       return res.status(404).json({ message: 'ไม่พบรายการจอง หรือคุณไม่มีสิทธิ์ยกเลิกรายการนี้' });
-      console.log("ไม่มีรายการที่ตรง ???");
     }
 
     const booking = checkQuery.rows[0];
