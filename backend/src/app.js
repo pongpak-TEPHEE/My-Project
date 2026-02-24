@@ -3,8 +3,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { globalLimiter } from './middleware/rateLimiter.js'
 import { globalErrorHandler } from './middleware/errorHandler.js'
+// นำเข้า Swagger
+import { swaggerUi, specs } from './config/swagger.js'; // ปรับ path ตามจริงนะครับ
+
+// สร้างเส้นทางสำหรับดูหน้าเว็บคู่มือ (เอาไว้ก่อน app.listen)
+
 
 const app = express();
+
 app.use(helmet()); // ปิดบัง Server Info และกัน XSS เบื้องต้น
 
 app.use(cors({
@@ -44,6 +50,7 @@ app.use('/users', usersRoutes);
 app.use('/rooms', roomsRoutes);
 app.use('/bookings', bookingsRoutes);
 app.use('/schedules', scheduleRoutes);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 // ดักจับ 404 Not Found (ถ้าไม่เข้า Route ด้านบนเลย จะมาตกตรงนี้)
 app.use((req, res, next) => {

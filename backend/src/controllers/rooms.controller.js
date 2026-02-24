@@ -191,6 +191,7 @@ export const getRoomDetail = async (req, res) => {
          r.location, 
          r.capacity, 
          r.room_characteristics,
+         r.repair,
          e.projector, 
          e.microphone, 
          e.computer, 
@@ -222,6 +223,7 @@ export const getRoomDetail = async (req, res) => {
       capacity: data.capacity,         // เช่น 45
       location: data.location,         // เช่น "ตึก 26 ชั้น 5"
       description: data.room_characteristics, // "สำหรับการเรียนการสอน..."
+      repair: data.repair,
       facilities: facilitiesList       // ส่งไปเป็น Array ข้อความเลย Frontend วนลูปแสดงง่าย
     });
 

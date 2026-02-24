@@ -19,6 +19,16 @@
             "date": 1771851293360,
             "name": "logs\\security-2026-02-23.log",
             "hash": "a61e2516733d1511ad7fcf475621e875f0f6c78193c55989d6d921a0e0a27d38"
+        },
+        {
+            "date": 1771943423625,
+            "name": "logs\\security-2026-02-24.log",
+            "hash": "91ad936c7d27ac48396e5ce4e90dedf3372a9707605ecb88d80f947476e753cb"
+        },
+        {
+            "date": 1771952522971,
+            "name": "logs\\security-2026-02-25.log",
+            "hash": "35cdbb98835d6e905507bae61e37123d5660f1cddd1798f80a7b0e1ba6be0535"
         }
     ],
     "hashType": "sha256"

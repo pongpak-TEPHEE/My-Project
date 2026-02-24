@@ -2,6 +2,30 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../config/db.js';
 import { logger } from '../utils/logger.js';
 
+/**
+ * @swagger
+ * /auth/request-otp:
+ * post:
+ * summary: ขอรหัส OTP สำหรับเข้าสู่ระบบ
+ * tags: [Authentication]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * properties:
+ * email:
+ * type: string
+ * description: อีเมลของมหาวิทยาลัย (@ku.th)
+ * example: pongpak.te@ku.th
+ * responses:
+ * 200:
+ * description: ส่ง OTP ไปยังอีเมลสำเร็จ
+ * 500:
+ * description: ระบบขัดข้อง
+ */
+
 // ฟังก์ชันสำหรับ "ตรวจบัตรผ่าน" (Token)
 export const authenticateToken = async (req, res, next) => {
   // 1. ดึง Token จาก Header

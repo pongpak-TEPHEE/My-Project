@@ -303,7 +303,7 @@ export const createBookingForTeacher = async (req, res) => {
 
     // ห้ามจองย้อนหลัง
     if (bookingDate < today) {
-      return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
+      return res.status(400).json({ message: 'ไม่สามารถจองวันย้อนหลังได้' });
     }
     
     // เช็คเวลาละเอียด (กรณีจองวันนี้ แต่เวลาผ่านไปแล้ว)
@@ -311,7 +311,7 @@ export const createBookingForTeacher = async (req, res) => {
        return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
 
-    // 1. ตรวจสอบว่าห้องว่างไหม?
+    //  ตรวจสอบว่าห้องว่างไหม?
     // เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
@@ -360,13 +360,9 @@ export const createBookingForTeacher = async (req, res) => {
       });
     }
 
-    // กรณีที่ต้องปรับความยาวของ booking_id
-    // const randomHex = crypto.randomBytes(4).toString('hex'); // จะได้ตัวเลขผสมตัวอักษร 8 ตัว เช่น 'a1b2c3d4'
-    // const newBookingId = `b_${randomHex}`; // ผลลัพธ์ที่ได้จะเป็น 'b_a1b2c3d4'
-
     const bookingId = crypto.randomUUID();
 
-    // 3. บันทึกข้อมูล
+    // บันทึกข้อมูล
     await pool.query(
       `INSERT INTO public."Booking" 
        (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status)
@@ -389,6 +385,7 @@ export const createBookingForTeacher = async (req, res) => {
 // /bookings/staff
 // สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForStaff = async (req, res) => {
+
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
   // แปลงเวลาเป็นนาที
@@ -443,12 +440,34 @@ export const createBookingForStaff = async (req, res) => {
     if (bookingStart < now) {
        return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
+    // ให้ยามไปเช็คสถานะห้องก่อนว่าเปิดให้ใช้ไหม?
+    const checkRoomQuery = `
+      SELECT is_active, repair 
+      FROM public."Rooms" 
+      WHERE room_id = $1
+    `;
+    const roomResult = await pool.query(checkRoomQuery, [room_id]);
 
+    // ดักกรณีพิมพ์รหัสห้องผิด แล้วหาห้องไม่เจอ
+    if (roomResult.rowCount === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "ไม่พบข้อมูลห้องนี้ในระบบครับ" 
+      });
+    }
 
+    const room = roomResult.rows[0];
 
-    // 1. ตรวจสอบว่าห้องว่างไหม?
+    // ดักจับห้องที่ถูกปิด (is_active = false) หรือ กำลังซ่อม (repair = true)
+    if (room.repair === true) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "ไม่สามารถจองได้ เนื่องจากห้องนี้ถูกระงับการใช้งานชั่วคราวครับ" 
+      });
+    }
 
-    // 🛑 CHECk 1: เช็ค "ตารางเรียน (Schedule)" (รวมถึงวิชาที่งดสอน)
+    // ตรวจสอบว่าห้องว่างไหม?
+    // เช็ค "ตารางเรียน (Schedule)" (รวมถึงวิชาที่งดสอน)
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
        FROM public."Schedules"
@@ -468,7 +487,7 @@ export const createBookingForStaff = async (req, res) => {
       });
     }
 
-    // 🛑 CHECK 2: เช็ค "การจองของคนอื่น (Booking)"
+    // เช็ค "การจองของคนอื่น (Booking)"
     const bookingConflict = await pool.query(
       `SELECT booking_id, status FROM public."Booking"
        WHERE room_id = $1 
@@ -497,9 +516,7 @@ export const createBookingForStaff = async (req, res) => {
       });
     }
 
-    // -----------------------------------------------------------------------
-    // 2. สร้าง Booking ID (Logic เดิม)
-    // -----------------------------------------------------------------------
+    // สร้าง Booking ID (Logic เดิม)
     let newBookingId = 'b0001';
 
     const latestBookingResult = await pool.query(
@@ -513,9 +530,7 @@ export const createBookingForStaff = async (req, res) => {
       newBookingId = 'b' + nextNumber.toString().padStart(4, '0');
     }
 
-    // -----------------------------------------------------------------------
-    // 3. บันทึกข้อมูล (Status = approved)
-    // -----------------------------------------------------------------------
+    // บันทึกข้อมูล (Status = approved)
     await pool.query(
       `INSERT INTO public."Booking" 
        (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status, approved_by)
