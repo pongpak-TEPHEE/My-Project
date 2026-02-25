@@ -557,7 +557,74 @@ export const getAllSchedules = async (req, res) => {
 };
 
 // // PATCH /schedules/:id/status
-// ฟังก์ชันเปลี่ยนสถานะงดใช้ห้อง 
+// ฟังก์ชันเปลี่ยนสถานะงดใช้ห้อง
+/**
+ * @swagger
+ * /schedules/{id}/status:
+ *   patch:
+ *     summary: เปลี่ยนสถานะงดใช้ห้อง/งดคลาสเรียนรายคาบ (Staff แก้ได้ทั้งหมด, Teacher แก้ได้เฉพาะของตัวเอง)
+ *     tags:
+ *       - Schedules
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: รหัสคาบเรียน (schedule_id) ที่ต้องการเปลี่ยนสถานะ (เช่น "sch-1001")
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - temporarily_closed
+ *             properties:
+ *               temporarily_closed:
+ *                 type: boolean
+ *                 description: สถานะการงดคลาส (true = งดใช้ห้อง/งดคลาส, false = เรียนปกติ)
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: อัปเดตสถานะสำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             example:
+ *               message: "อัปเดตสถานะสำเร็จ: งดใช้ห้อง (Closed)"
+ *               schedule:
+ *                 schedule_id: "sch-1001"
+ *                 subject_name: "Software Engineering"
+ *                 temporarily_closed: true
+ *       400:
+ *         description: ข้อมูลที่ส่งมาไม่ถูกต้อง (ไม่ได้ส่งเป็น Boolean)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             example:
+ *               message: "ข้อมูลไม่ถูกต้อง (ต้องเป็น true หรือ false)"
+ *       403:
+ *         description: ไม่มีสิทธิ์แก้ไขข้อมูล (พยายามแก้ไขคลาสของอาจารย์ท่านอื่น) หรือไม่พบข้อมูลคาบเรียนนี้
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             example:
+ *               message: "ไม่พบข้อมูล หรือ คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้"
+ *       500:
+ *         description: ระบบขัดข้อง
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             example:
+ *               message: "เกิดข้อผิดพลาดในการอัปเดตสถานะ"
+ */
 export const updateScheduleStatus = async (req, res) => {
   const { id } = req.params; // รับ schedule_id
   const { temporarily_closed } = req.body;

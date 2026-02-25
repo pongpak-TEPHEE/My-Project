@@ -26,7 +26,7 @@ export const getPendingBookings = async (req, res) => {
     const params = [];
     
     if (requester.role === 'teacher') {
-        // 🔒 ถ้าเป็น Teacher: บังคับกรองเฉพาะของตัวเอง
+        // ถ้าเป็น Teacher: บังคับ กรองเฉพาะของตัวเอง
         sql += ` AND b.teacher_id = $1`;
         params.push(requester.user_id);
         
@@ -516,32 +516,20 @@ export const createBookingForStaff = async (req, res) => {
       });
     }
 
-    // สร้าง Booking ID (Logic เดิม)
-    let newBookingId = 'b0001';
-
-    const latestBookingResult = await pool.query(
-      `SELECT booking_id FROM public."Booking" ORDER BY booking_id DESC LIMIT 1`
-    );
-
-    if (latestBookingResult.rows.length > 0) {
-      const latestId = latestBookingResult.rows[0].booking_id;
-      const currentNumber = parseInt(latestId.substring(1)); 
-      const nextNumber = currentNumber + 1; 
-      newBookingId = 'b' + nextNumber.toString().padStart(4, '0');
-    }
+    const bookingId = crypto.randomUUID();
 
     // บันทึกข้อมูล (Status = approved)
     await pool.query(
       `INSERT INTO public."Booking" 
        (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status, approved_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8)`,
-      [newBookingId, room_id, staff_id, purpose, date, start_time, end_time, staff_id]
+      [bookingId, room_id, staff_id, purpose, date, start_time, end_time, staff_id]
     );
 
-    // 4. ส่ง response
+    // ส่ง response
     res.status(201).json({ 
         message: 'จองห้องสำเร็จ (อนุมัติทันที)', 
-        bookingId: newBookingId,
+        bookingId: bookingId,
         status: 'approved'
     });
 
@@ -903,9 +891,9 @@ export const getMyActiveBookings = async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-         b.*,           -- ดึงทุกคอลัมน์จาก Booking
-         u.name,        -- ✅ ดึงชื่อ
-         u.surname      -- ✅ ดึงนามสกุล
+         b.*,
+         u.name,
+         u.surname
        FROM public."Booking" b
        JOIN public."Users" u ON b.teacher_id = u.user_id
        WHERE b.teacher_id = $1

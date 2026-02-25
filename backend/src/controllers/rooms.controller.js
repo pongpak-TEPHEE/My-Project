@@ -187,7 +187,7 @@ export const getRoomDetail = async (req, res) => {
     const result = await pool.query(
       `SELECT 
          r.room_id, 
-         r.room_type, 
+         r.room_type,
          r.location, 
          r.capacity, 
          r.room_characteristics,
@@ -304,9 +304,7 @@ export const createRoom = async (req, res) => {
 };
 
 // rooms/:room_id/delete
-/* ไม่ใช้การลดออกจาก database แต่เป็นการปรับให้อยู่ใน database !!!!!!!!!!!!!!!! 
-(ข้อเสียคือ มีนจะค้างอยูาใน database ตลอดไป ควรหา cron 
-ที่คอยสังเกตุการณ์ว่าตอนนี้ไม่มีการอ้างอิงห้องนี้แล้วจากนั้นค่อยเอาออกจาก database) */
+// ไม่ใช้การลดออกจาก database แต่เป็นการปรับให้อยู่ใน database !!!!!!!!!!!!!!!! 
 export const deleteRoom = async (req, res) => {
   const { room_id } = req.params;
   const client = await pool.connect();
