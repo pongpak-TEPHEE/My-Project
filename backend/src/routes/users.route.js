@@ -98,9 +98,51 @@ const router = express.Router();
  *                 value:
  *                   message: "ชื่อและนามสกุล 'พงศ์ภัค ใจดี' มีอยู่ในระบบแล้ว"
  *       401:
- *         description: ไม่มี Token (Unauthorized)
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
  *       403:
- *         description: ไม่มีสิทธิ์เพิ่มผู้ใช้ (ไม่ใช่ Staff)
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -160,14 +202,52 @@ router.post('/create', authenticateToken, authorizeRole('staff'), createUser);
  *               type: object
  *             example:
  *               message: "แก้ไขข้อมูลผู้ใช้งานสำเร็จ"
- *       404:
- *         description: ไม่พบผู้ใช้งานที่ต้องการแก้ไข
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *             example:
- *               message: "ไม่พบผู้ใช้งานที่ต้องการแก้ไข"
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -214,6 +294,52 @@ router.put('/edit/:user_id', authenticateToken, authorizeRole('staff'), editUser
  *                 summary: กรณีไม่มีประวัติเลย (Hard Delete)
  *                 value:
  *                   message: "ลบผู้ใช้งาน t002 ถาวรเรียบร้อยแล้ว (Hard Delete) เนื่องจากไม่มีประวัติการทำรายการ"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       404:
  *         description: ไม่พบผู้ใช้งานที่ต้องการลบ
  *         content:
@@ -267,6 +393,44 @@ router.patch('/delete/:user_id', authenticateToken, authorizeRole('staff'), dele
  *                   role:
  *                     type: string
  *                     example: "teacher"
+ *       401:
+ *         description: "ไม่มี Token หรือไม่พบผู้ใช้งานในระบบ (Unauthorized)"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: "ไม่ได้แนบ Token"
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: "ไม่พบผู้ใช้งาน"
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *       403:
+ *         description: "Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               AccountSuspended:
+ *                 summary: "บัญชีถูกระงับ"
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: "Token ถูกยกเลิก (Logout ไปแล้ว)"
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: "Token หมดอายุ"
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: "Token ไม่ถูกต้อง"
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:

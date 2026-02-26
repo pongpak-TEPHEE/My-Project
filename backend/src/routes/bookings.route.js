@@ -102,6 +102,52 @@ const router = express.Router();
  *                 value:
  *                   message: "ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาตรวจสอบรายการ Pending ก่อน)"
  *                   status: "pending"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       409:
  *         description: เวลาจองซ้อนทับกับตารางอื่น
  *         content:
@@ -217,6 +263,52 @@ router.post('/teacher', authenticateToken, authorizeRole('teacher'), createBooki
  *                 value:
  *                   message: "ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาตรวจสอบรายการ Pending ก่อน)"
  *                   status: "pending"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       404:
  *         description: ไม่พบข้อมูลห้องในระบบ
  *         content:
@@ -299,6 +391,52 @@ router.post('/staff', authenticateToken, authorizeRole('staff'), createBookingFo
  *                   email:
  *                     type: string
  *                     example: "pongpak.te@ku.th"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -368,6 +506,52 @@ router.get('/pending', authenticateToken, authorizeRole('teacher', 'staff'), get
  *                   email:
  *                     type: string
  *                     example: "pongpak.te@ku.th"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -437,6 +621,52 @@ router.get('/approved', authenticateToken, authorizeRole('teacher', 'staff'), ge
  *                   email:
  *                     type: string
  *                     example: "pongpak.te@ku.th"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -513,6 +743,52 @@ router.get('/rejected', authenticateToken, authorizeRole('teacher', 'staff'), ge
  *               type: object
  *               example:
  *                 message: "สถานะไม่ถูกต้อง"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       404:
  *         description: ไม่พบรายการจองนี้
  *         content:
@@ -693,6 +969,44 @@ router.get('/allBookingSpecific/:roomId', getAllBookingSpecific);
  *                   room_id:
  *                     type: string
  *                     example: "SC1-101"
+ *       401:
+ *         description: "ไม่มี Token หรือไม่พบผู้ใช้งานในระบบ (Unauthorized)"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: "ไม่ได้แนบ Token"
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: "ไม่พบผู้ใช้งาน"
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *       403:
+ *         description: "Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               AccountSuspended:
+ *                 summary: "บัญชีถูกระงับ"
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: "Token ถูกยกเลิก (Logout ไปแล้ว)"
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: "Token หมดอายุ"
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: "Token ไม่ถูกต้อง"
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -754,7 +1068,43 @@ router.get('/my-history', authenticateToken, getMyBookings);
  *                   value:
  *                     message: "รายการนี้ถูกยกเลิกหรือปฏิเสธไปแล้ว"
  *       401:
- *         description: ไม่มี Token (Unauthorized)
+ *         description: "ไม่มี Token หรือไม่พบผู้ใช้งานในระบบ (Unauthorized)"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: "ไม่ได้แนบ Token"
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: "ไม่พบผู้ใช้งาน"
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *       403:
+ *         description: "Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               AccountSuspended:
+ *                 summary: "บัญชีถูกระงับ"
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: "Token ถูกยกเลิก (Logout ไปแล้ว)"
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: "Token หมดอายุ"
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: "Token ไม่ถูกต้อง"
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       404:
  *         description: ไม่พบรายการจอง หรือไม่มีสิทธิ์ยกเลิก
  *         content:
@@ -861,14 +1211,52 @@ router.put('/:id/cancel', authenticateToken, cancelBooking);
  *                   summary: แก้ไขรายการที่ยกเลิกแล้ว
  *                   value:
  *                     message: "รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้"
- *       403:
- *         description: ไม่มีสิทธิ์แก้ไขการจองของคนอื่น
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *               example:
- *                 message: "คุณไม่มีสิทธิ์แก้ไขการจองของคนอื่น"
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       404:
  *         description: ไม่พบรายการจองนี้
  *         content:
@@ -1019,6 +1407,52 @@ router.get('/:id', getRoomStatus);
  *                   can_edit_delete:
  *                     type: boolean
  *                     example: true
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -1075,9 +1509,51 @@ router.get('/my-bookings/active', authenticateToken, authorizeRole('teacher'), g
  *                   status: "class_cancelled"
  *                   can_edit_delete: false
  *       401:
- *         description: ไม่มี Token (Unauthorized)
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
  *       403:
- *         description: ไม่มีสิทธิ์การเข้าถึง (ไม่ใช่ อาจารย์)
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:

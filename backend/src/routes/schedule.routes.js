@@ -131,6 +131,52 @@ const router = express.Router();
  *               type: object
  *             example:
  *               message: "กรุณาอัปโหลดไฟล์ Excel"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -140,12 +186,7 @@ const router = express.Router();
  *             example:
  *               message: "เกิดข้อผิดพลาดในการประมวลผลไฟล์ Excel"
  */
-router.post('/import', 
-    authenticateToken, 
-    authorizeRole('staff'), 
-    handleExcelUpload, 
-    importClassSchedules
-);
+router.post('/import', authenticateToken, authorizeRole('staff'), handleExcelUpload, importClassSchedules);
 
 // ยืนยันการบันทึกข้อมูล (Confirm)
 // POST /schedules/confirm
@@ -215,6 +256,52 @@ router.post('/import',
  *               type: object
  *             example:
  *               message: "ไม่มีข้อมูลที่จะบันทึก"
+ *       401:
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: เกิดข้อผิดพลาดในการบันทึกข้อมูล
  *         content:
@@ -225,11 +312,7 @@ router.post('/import',
  *               message: "เกิดข้อผิดพลาดในการบันทึกข้อมูล"
  *               error: "รายละเอียด error message จากระบบ"
  */
-router.post('/confirm', 
-    authenticateToken, 
-    authorizeRole('admin', 'staff'), 
-    confirmSchedules
-);
+router.post('/confirm', authenticateToken, authorizeRole('admin', 'staff'), confirmSchedules);
 
 // ดึงข้อมูลที่เก็บไว้ใน table schedule ไปแสดงผลในตาราง
 /**
@@ -458,15 +541,51 @@ router.get('/', getAllSchedules)
  *             example:
  *               message: "ข้อมูลไม่ถูกต้อง (ต้องเป็น true หรือ false)"
  *       401:
- *         description: ไม่มี Token (Unauthorized)
- *       403:
- *         description: ไม่มีสิทธิ์แก้ไขข้อมูล (พยายามแก้ไขคลาสของอาจารย์ท่านอื่น) หรือไม่พบข้อมูลคาบเรียนนี้
+ *         description: ไม่มี Token, ไม่พบผู้ใช้ หรือยืนยันตัวตนไม่สำเร็จ (Unauthorized)
  *         content:
  *           application/json:
  *             schema:
  *               type: object
- *             example:
- *               message: "ไม่พบข้อมูล หรือ คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้"
+ *             examples:
+ *               NoToken:
+ *                 summary: ไม่ได้แนบ Token
+ *                 value:
+ *                   message: "Access Denied: No Token Provided"
+ *               UserNotFound:
+ *                 summary: ไม่พบผู้ใช้งาน
+ *                 value:
+ *                   message: "ไม่พบผู้ใช้งานนี้ในระบบแล้ว"
+ *               NotAuthenticated:
+ *                 summary: ไม่ผ่านการยืนยันตัวตน
+ *                 value:
+ *                   message: "User not authenticated"
+ *       403:
+ *         description: สิทธิ์ไม่เพียงพอ, Token มีปัญหา หรือบัญชีถูกระงับ (Forbidden)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             examples:
+ *               RoleDenied:
+ *                 summary: สิทธิ์การเข้าถึงไม่เพียงพอ
+ *                 value:
+ *                   message: "Access Denied: Requires one of these roles: admin, staff"
+ *               AccountSuspended:
+ *                 summary: บัญชีถูกระงับ
+ *                 value:
+ *                   message: "บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่"
+ *               TokenBlacklisted:
+ *                 summary: Token ถูกยกเลิก (Logout ไปแล้ว)
+ *                 value:
+ *                   message: "Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)"
+ *               TokenExpired:
+ *                 summary: Token หมดอายุ
+ *                 value:
+ *                   message: "Token หมดอายุแล้ว (Expired)"
+ *               TokenInvalid:
+ *                 summary: Token ไม่ถูกต้อง
+ *                 value:
+ *                   message: "Token ไม่ถูกต้อง (Invalid)"
  *       500:
  *         description: ระบบขัดข้อง
  *         content:
@@ -476,10 +595,6 @@ router.get('/', getAllSchedules)
  *             example:
  *               message: "เกิดข้อผิดพลาดในการอัปเดตสถานะ"
  */
-router.patch('/:id/status', 
-  authenticateToken, 
-  authorizeRole('teacher', 'staff'), 
-  updateScheduleStatus
-);
+router.patch('/:id/status', authenticateToken, authorizeRole('teacher', 'staff'), updateScheduleStatus);
 
 export default router;

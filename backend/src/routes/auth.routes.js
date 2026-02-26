@@ -28,6 +28,7 @@ const router = express.Router();
  *         description: ระบบขัดข้อง
  */
 router.post('/request-otp', otpRateLimiter, requestOTP);
+
 /**
  * @swagger
  * /auth/verify-otp:
@@ -58,6 +59,7 @@ router.post('/request-otp', otpRateLimiter, requestOTP);
  *         description: ระบบขัดข้อง
  */
 router.post('/verify-otp', loginRateLimiter, verifyOTP);
+
 /**
  * @swagger
  * /auth/logout:
