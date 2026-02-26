@@ -5,7 +5,7 @@ import { logger } from '../utils/logger.js';
 
 // ฟังก์ชันสำหรับ "ตรวจบัตรผ่าน" (Token)
 export const authenticateToken = async (req, res, next) => {
-  // 1. ดึง Token จาก Header
+  // ดึง Token จาก Header
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -50,7 +50,6 @@ export const authenticateToken = async (req, res, next) => {
     // ⚠️ หมายเหตุ: ข้อมูลใน decoded จะมาจากตอนที่เรา jwt.sign
     // จากโค้ด verifyOTP ก่อนหน้านี้ เราใช้ 'user_id' ดังนั้นเรียกใช้ต้อง req.user.user_id นะครับ
     req.user = decoded;
-    // console.log("req.user : ", req.user);
     
     next();
 

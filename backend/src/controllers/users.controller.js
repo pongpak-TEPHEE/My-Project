@@ -27,7 +27,7 @@ export const createUser = async (req, res) => {
 
   try {
     
-    // 2. เช็คว่ามี User นี้ในระบบหรือยัง (เช็คทั้ง user_id, email และ name+surname)
+    // เช็คว่ามี User นี้ในระบบหรือยัง (เช็คทั้ง user_id, email และ name+surname)
     // ใช้ surname || '' เพื่อป้องกัน error กรณีที่ผู้ใช้ไม่มีนามสกุล
     const checkUser = await pool.query(
       `SELECT user_id, email, name, surname 
@@ -52,7 +52,7 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ message: `ชื่อและนามสกุล '${name} ${surname || ''}' มีอยู่ในระบบแล้ว` });
     }
 
-    // 3. เพิ่มลง Database
+    // เพิ่มลง Database
     // created_at จะใช้ฟังก์ชัน NOW() ของ PostgreSQL เพื่อเอาเวลาปัจจุบันของ Database
     const newUser = await pool.query(
       `INSERT INTO public."Users" 
@@ -69,7 +69,7 @@ export const createUser = async (req, res) => {
       ]
     );
 
-    // 4. ส่งผลลัพธ์กลับ
+    // ส่งผลลัพธ์กลับ
     res.status(201).json({
       message: 'เพิ่มผู้ใช้งานสำเร็จ',
       user: newUser.rows[0]
@@ -95,22 +95,22 @@ export const deleteUser = async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // STEP 1: ตรวจสอบประวัติการใช้งาน (Check Dependencies)
+    // ตรวจสอบประวัติการใช้งาน (Check Dependencies)
     
-    // เช็ค 1: เคยมีการจองห้องหรือไม่? (เช็คจาก teacher_id)
+    // เช็คว่าเคยมีการจองห้องหรือไม่? (เช็คจาก teacher_id)
     const checkBooking = await client.query(
       `SELECT 1 FROM public."Booking" WHERE teacher_id = $1 LIMIT 1`,
       [user_id]
     );
 
-    // เช็ค 2: เคยมีตารางสอนหรือไม่? (เช็คจาก teacher_id)
+    // เช็คว่าเคยมีตารางสอนหรือไม่? (เช็คจาก teacher_id)
     const checkSchedule = await client.query(
       `SELECT 1 FROM public."Schedules" WHERE teacher_id = $1 LIMIT 1`,
       [user_id]
     );
 
     const hasHistory = (checkBooking.rowCount > 0 || checkSchedule.rowCount > 0);
-    // STEP 2: ตัดสินใจว่าจะลบแบบไหน?
+    // ตัดสินใจว่าจะลบแบบไหน? ------------------
 
     if (!hasHistory) {
       
@@ -129,9 +129,9 @@ export const deleteUser = async (req, res) => {
       });
 
     } else {
-      // ⚠️ กรณี B: "มีประวัติการใช้งาน" -> ปิดการใช้งาน (Soft Delete)
+      // กรณี B: "มีประวัติการใช้งาน" -> ปิดการใช้งาน (Soft Delete)
       
-      // 1. ยกเลิก Booking ในอนาคตที่อาจารย์คนนี้เป็นคนจอง (เฉพาะที่ยังไม่จบ)
+      // ยกเลิก Booking ในอนาคตที่อาจารย์คนนี้เป็นคนจอง (เฉพาะที่ยังไม่จบ)
       await client.query(
         `UPDATE public."Booking"
          SET status = 'cancelled'
@@ -141,7 +141,7 @@ export const deleteUser = async (req, res) => {
         [user_id]
       );
 
-      // 2. เปลี่ยน is_active เป็น false ในตาราง Users
+      // เปลี่ยน is_active เป็น false ในตาราง Users
       const updateResult = await client.query(
         `UPDATE public."Users" 
          SET is_active = FALSE 
@@ -189,7 +189,7 @@ export const editUser = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่ม Transaction
 
-    // STEP 1: อัปเดตข้อมูลผู้ใช้งานลงตาราง Users
+    // อัปเดตข้อมูลผู้ใช้งานลงตาราง Users
     const updateUserResult = await client.query(
       `UPDATE public."Users" 
        SET title = $1, 

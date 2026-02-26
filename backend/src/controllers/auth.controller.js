@@ -147,7 +147,7 @@ export const verifyOTP = async (req, res) => {
 // เป็นการลบ token ของผู้ใช้ออก
 export const logout = async (req, res) => {
   try {
-    // 1. ดึง Token จาก Header
+    // ดึง Token จาก Header
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -155,7 +155,7 @@ export const logout = async (req, res) => {
       return res.status(200).json({ message: 'Logout สำเร็จ (ไม่มี Token)' }); 
     }
 
-    // 2. ถอดรหัส Token เพื่อดูวันหมดอายุ (exp)
+    // ถอดรหัส Token เพื่อดูวันหมดอายุ (exp)
     // เราใช้ jwt.decode (ไม่ต้อง verify เพราะเราแค่อยากรู้วันหมดอายุ)
     const decoded = jwt.decode(token);
     
@@ -167,7 +167,7 @@ export const logout = async (req, res) => {
     // แปลง exp (seconds) เป็น Date Object ของ Javascript
     const expiresAt = new Date(decoded.exp * 1000);
 
-    // 3. บันทึกลง Blacklist
+    // บันทึกลง Blacklist
     await pool.query(
       `INSERT INTO public."TokenBlacklist" (token, expires_at) 
        VALUES ($1, $2) 

@@ -62,11 +62,10 @@ export const getPendingBookings = async (req, res) => {
 // ดึงรายการที่ "ถูกปฏิเสธ"
 export const getRejectedBookings = async (req, res) => {
   try {
-    // 1. รับข้อมูลผู้เรียก (Requester) และ Query Parameter
+    // รับข้อมูลผู้เรียก (Requester) และ Query Parameter
     const requester = req.user; 
     const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
 
-    // 2. สร้าง SQL พื้นฐาน
     let sql = `
       SELECT 
          b.booking_id, 
@@ -87,30 +86,29 @@ export const getRejectedBookings = async (req, res) => {
 
     const params = [];
 
-    // 3. Logic การกรองสิทธิ์ (Role-based Logic)
+    // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
-        // 🔒 Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
+        // Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
         sql += ` AND b.teacher_id = $1`;
         params.push(requester.user_id);
 
     } else if (requester.role === 'staff' || requester.role === 'admin') {
-        // 🔓 Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
+        // Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
         if (user_id) {
             sql += ` AND b.teacher_id = $1`;
             params.push(user_id);
         }
     }
 
-    // 4. การเรียงลำดับ (วันที่ล่าสุดขึ้นก่อน)
+    // การเรียงลำดับ (วันที่ล่าสุดขึ้นก่อน)
     sql += ` ORDER BY b.date DESC, b.start_time ASC`;
 
-    // 5. รัน Query
+    // รัน Query
     const result = await pool.query(sql, params);
 
-    // 6. จัด Format ข้อมูล
+    // จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
        ...row,
-      //  teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
        end_time: String(row.end_time).substring(0, 5)
     }));
@@ -126,11 +124,11 @@ export const getRejectedBookings = async (req, res) => {
 // ดึงรายการที่ "อนุมัติแล้ว"
 export const getApprovedBookings = async (req, res) => {
   try {
-    // 1. รับข้อมูลผู้เรียก (Requester) และ Query Parameter
+    // รับข้อมูลผู้เรียก (Requester) และ Query Parameter
     const requester = req.user; 
-    const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
+    const { user_id } = req.query; // สำหรับ Staff ใช้กรองดูเฉพาะคน
 
-    // 2. สร้าง SQL พื้นฐาน
+    // สร้าง SQL พื้นฐาน
     let sql = `
       SELECT 
          b.booking_id, 
@@ -151,32 +149,29 @@ export const getApprovedBookings = async (req, res) => {
 
     const params = [];
 
-    // 3. Logic การกรองสิทธิ์ (Role-based Logic)
+    // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
-        // 🔒 Teacher: เห็นเฉพาะของตัวเองเท่านั้น
+        // Teacher: เห็นเฉพาะของตัวเองเท่านั้น
         sql += ` AND b.teacher_id = $${params.length + 1}`;
         params.push(requester.user_id);
 
     } else if (requester.role === 'staff' || requester.role === 'admin') {
-        // 🔓 Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
+        // Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
         if (user_id) {
             sql += ` AND b.teacher_id = $${params.length + 1}`;
             params.push(user_id);
         }
     }
 
-    // 4. การเรียงลำดับ 
-    // (แนะนำ: ถ้าเป็นรายการที่ "กำลังจะมาถึง" ใช้ ASC จะดูง่ายกว่า แต่ถ้าดูประวัติใช้ DESC ครับ)
-    // อันนี้ผมคง DESC ตามโค้ดเดิมไว้ก่อนครับ
+    // การเรียงลำดับเป็นแบบ DESC
     sql += ` ORDER BY b.date DESC, b.start_time ASC`;
 
-    // 5. รัน Query
+    // รัน Query
     const result = await pool.query(sql, params);
 
-    // 6. จัด Format ข้อมูล
+    // จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
        ...row,
-      //  teacher_name: `${row.name} ${row.surname}`, // รวมชื่อ + นามสกุล
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
        end_time: String(row.end_time).substring(0, 5)
     }));
@@ -197,7 +192,7 @@ export const getRoomStatus = async (req, res) => {
   const queryDate =  new Date().toISOString().split('T')[0];
 
   try {
-    // 1. ดึงข้อมูลห้อง (เพื่อให้รู้ชื่อห้องไปโชว์หัวข้อ)
+    // ดึงข้อมูลห้อง
     const roomResult = await pool.query(
       `SELECT room_id FROM public."Rooms" WHERE room_id = $1`,
       [id]
@@ -207,7 +202,7 @@ export const getRoomStatus = async (req, res) => {
       return res.status(404).json({ message: 'ไม่พบห้องดังกล่าว' });
     }
 
-    // 2. ดึงรายการจองที่ "อนุมัติแล้ว" (Approved) ของห้องนั้น ในวันนั้น
+    // ดึงรายการจองที่ "อนุมัติแล้ว" (Approved) ของห้องนั้น ในวันนั้น
     const bookingsResult = await pool.query(
       `SELECT 
          b.booking_id,
@@ -225,14 +220,14 @@ export const getRoomStatus = async (req, res) => {
       [id, queryDate]
     );
 
-    // 3. เตรียมข้อมูลส่งกลับ (คำนวณว่าห้อง "ว่าง" หรือ "ไม่ว่าง")
+    // เตรียมข้อมูลส่งกลับ (คำนวณว่าห้อง "ว่าง" หรือ "ไม่ว่าง")
     const bookings = bookingsResult.rows;
     const isBusy = bookings.length > 0; // ถ้ามีรายการจอง > 0 แปลว่า "ไม่ว่าง"
 
     res.json({
       room_info: roomResult.rows[0],
       date: queryDate,
-      status_label: isBusy ? 'ไม่ว่าง' : 'ว่าง', // เอาไปทำป้ายสีแดง/เขียว
+      status_label: isBusy ? 'ไม่ว่าง' : 'ว่าง', // เอาไปทำป้ายสีแดง /เขียว
       total_bookings: bookings.length,
       schedule: bookings.map(b => ({
         ...b,
@@ -568,7 +563,7 @@ export const updateBookingStatus = async (req, res) => {
 
     const booking = updateResult.rows[0];
 
-    // 2. ดึงข้อมูลเพิ่มเติมเพื่อเตรียมส่งเมล
+    // ดึงข้อมูลเพิ่มเติมเพื่อเตรียมส่งเมล
     const details = await pool.query(
       `SELECT u.email, r.room_id
        FROM public."Booking" b
@@ -602,7 +597,7 @@ export const updateBookingStatus = async (req, res) => {
       if (shouldSendEmail) {
         emailCooldowns.set(cooldownKey, Date.now());
 
-        // 3. ส่งเมล (ยิงแล้วลืมเลย ไม่ต้องรอ await ก็ได้เพื่อให้ response เร็ว)
+        // ส่งเมล (ยิงแล้วลืมเลย ไม่ต้องรอ await ก็ได้เพื่อให้ response เร็ว)
         sendBookingStatusEmail(email, {
           status: status,
           room_name: room_name, // ตอนนี้มีค่าแล้ว เพราะแก้ SQL ให้
@@ -612,7 +607,7 @@ export const updateBookingStatus = async (req, res) => {
           reject_reason: reject_reason || '' // รับค่าจาก req.body ถ้ามี
         });
 
-        console.log(`📧 สั่งส่งอีเมลแจ้งสถานะ ${status} ไปที่ ${email} เรียบร้อยแล้ว`);
+        console.log(` สั่งส่งอีเมลแจ้งสถานะ ${status} ไปที่ ${email} เรียบร้อยแล้ว`);
       }
     }
 
@@ -664,7 +659,6 @@ export const getAllBookingSpecific =  async (req, res) => {
     }
 };
 
-
 // /bookings/allBooking
 // สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในทุกห้อง
 export const getAllBooking = async (req, res) => {
@@ -687,7 +681,7 @@ export const getAllBooking = async (req, res) => {
             ORDER BY b.date DESC, b.start_time ASC
         `;
         
-        // 2. ส่งแค่ parameter ตัวเดียว คือ status
+        // ส่งแค่ parameter ตัวเดียว คือ status
         const result = await pool.query(query, [status || 'approved']);
         
         res.json(result.rows); 
@@ -700,7 +694,7 @@ export const getAllBooking = async (req, res) => {
 // /bookings/my-history
 // ดึงรายการที่เราเคยจอง เช่น ผมนาย A มี userId = 001 : จองห้องอะไรบ้างก็ดึงมาทั้งหมด
 export const getMyBookings = async (req, res) => {
-  const teacher_id = req.user.userId; // ดึง ID จาก Token (Middleware แกะมาให้แล้ว)
+  const teacher_id = req.user.userId;
 
   try {
     const result = await pool.query(
@@ -716,7 +710,7 @@ export const getMyBookings = async (req, res) => {
        FROM public."Booking" b
        JOIN public."Rooms" r ON b.room_id = r.room_id
        WHERE b.teacher_id = $1
-       ORDER BY b.date DESC, b.start_time ASC`, // เรียงจากวันที่ล่าสุด
+       ORDER BY b.date DESC, b.start_time ASC`,
       [teacher_id]
     );
 
@@ -736,12 +730,12 @@ export const cancelBooking = async (req, res) => {
   const userRole = req.user.role;
 
   try {
-    // 2.1 ตรวจสอบก่อนว่ารายการนี้เป็นของคนนี้จริงไหม + สถานะยกเลิกได้ไหม
+    // ตรวจสอบก่อนว่ารายการนี้เป็นของคนนี้จริงไหม + สถานะยกเลิกได้ไหม
     const checkQuery = await pool.query(
       `SELECT * FROM public."Booking" 
        WHERE booking_id = $1 
-       AND (teacher_id = $2 OR $3 = 'staff')`, // 🛡️ เพิ่มเงื่อนไข OR ตรงนี้
-      [id, teacher_id, userRole] // ส่ง role เข้าไปเป็น Parameter ที่ 3
+       AND (teacher_id = $2 OR $3 = 'staff')`,
+      [id, teacher_id, userRole]
     );
 
     if (checkQuery.rows.length === 0) {
@@ -750,7 +744,7 @@ export const cancelBooking = async (req, res) => {
 
     const booking = checkQuery.rows[0];
 
-    // 2.2 เช็คว่ารายการผ่านไปหรือยัง (กันเนียนมายกเลิกย้อนหลัง)
+    // เช็คว่ารายการผ่านไปหรือยัง (ป้องกันการยกเลิกย้อนหลัง)
     const bookingDate = new Date(booking.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0); // set เวลาให้เป็น 00:00 เพื่อเทียบแค่วันที่
@@ -759,12 +753,12 @@ export const cancelBooking = async (req, res) => {
         return res.status(400).json({ message: 'ไม่สามารถยกเลิกรายการย้อนหลังได้' });
     }
 
-    // 2.3 เช็คสถานะ (ถ้าโดน reject หรือ cancel ไปแล้ว จะยกเลิกซ้ำทำไม)
+    // เช็คสถานะ (ถ้าโดน reject หรือ cancel ไปแล้ว จะยกเลิกไม่ได้)
     if (['rejected', 'cancelled'].includes(booking.status)) {
         return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกหรือปฏิเสธไปแล้ว' });
     }
 
-    // 2.4 ลงมืออัปเดตสถานะ
+    // อัปเดตสถานะ
     await pool.query(
       `UPDATE public."Booking" 
        SET status = 'cancelled' 
@@ -793,7 +787,7 @@ export const editBooking = async (req, res) => {
   }
 
   try {
-    //1: ดึงข้อมูลเก่ามาก่อน (เพื่อเช็คสิทธิ์ และเอา room_id)
+    // ดึงข้อมูลเก่ามาก่อน เพื่อเช็คสิทธิ์ และเอา room_id
     const oldBookingResult = await pool.query(
       `SELECT * FROM public."Booking" WHERE booking_id = $1`,
       [id]
@@ -806,19 +800,19 @@ export const editBooking = async (req, res) => {
     const oldBooking = oldBookingResult.rows[0];
     const roomId = oldBooking.room_id; // ต้องใช้ room_id จาก database
 
-    //2: ตรวจสอบสิทธิ์ (เจ้าของ หรือ staff เท่านั้น)
+    // ตรวจสอบสิทธิ์ (เจ้าของ หรือ staff เท่านั้น)
     // user_id ของคนที่จองและ user_id ของคนที่แก้ไขต้องตรงกัน
     if (oldBooking.teacher_id !== user_id) {
       return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขการจองของคนอื่น' });
     }
 
-    // ห้ามแก้รายการที่ถูกยกเลิกไปแล้ว (Optional)
+    // ห้ามแก้รายการที่ถูกยกเลิกไปแล้ว
     if (oldBooking.status === 'cancelled') {
         return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้' });
     }
 
-    //3: ตรวจสอบเวลาชน (Collision Check)
-    // 3.1 เช็คชนกับ "ตารางเรียน (Schedule)"
+    // ตรวจสอบเวลาชน
+    // เช็คชนกับ "ตารางเรียน (Schedule)"
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
        FROM public."Schedules"
@@ -835,7 +829,7 @@ export const editBooking = async (req, res) => {
       });
     }
 
-    // 3.2 เช็คชนกับ "Booking อื่น"
+    // เช็คชนกับ "Booking อื่นไหม"
     const bookingConflict = await pool.query(
       `SELECT booking_id, status FROM public."Booking"
        WHERE room_id = $1 
@@ -853,7 +847,7 @@ export const editBooking = async (req, res) => {
       });
     }
 
-    // STEP 4: อัปเดตข้อมูล (Update)
+    // อัปเดตข้อมูล (Update)
     // ต้องรีเซ็ตสถานะเป็น 'pending' เสมอ เพราะมีการเปลี่ยนเวลา/จุดประสงค์
     // (ยกเว้น Admin แก้เอง อาจจะให้ Approved เลยก็ได้ แล้วแต่ Logic)
     
@@ -924,7 +918,7 @@ export const getMyBookingHistory = async (req, res) => {
   const { user_id } = req.user;
 
   try {
-    // Query 1: ดึงจากตาราง Booking + JOIN Users
+    // ดึงจากตาราง Booking + JOIN Users
     const bookingQuery = pool.query(
       `SELECT 
           b.booking_id, 
@@ -935,10 +929,10 @@ export const getMyBookingHistory = async (req, res) => {
           b.start_time, 
           b.end_time, 
           b.status,
-          u.name,      -- ✅ ดึงชื่อ
-          u.surname    -- ✅ ดึงนามสกุล
+          u.name,
+          u.surname
        FROM public."Booking" b
-       JOIN public."Users" u ON b.teacher_id = u.user_id -- 🔗 เชื่อมตารางตรงนี้
+       JOIN public."Users" u ON b.teacher_id = u.user_id
        WHERE b.teacher_id = $1
        AND (
          b.date < CURRENT_DATE
@@ -948,9 +942,7 @@ export const getMyBookingHistory = async (req, res) => {
       [user_id]
     );
 
-    // ---------------------------------------------------------
-    // Query 2: ดึงจากตาราง Schedules (เหมือนเดิม)
-    // ---------------------------------------------------------
+    //  ดึงจากตาราง Schedules
     const scheduleQuery = pool.query(
       `SELECT 
           schedule_id, room_id, subject_name, teacher_name, date, start_time, end_time, temporarily_closed
@@ -963,16 +955,14 @@ export const getMyBookingHistory = async (req, res) => {
     // ทำงานพร้อมกัน
     const [bookingResult, scheduleResult] = await Promise.all([bookingQuery, scheduleQuery]);
 
-    // ---------------------------------------------------------
-    // Merge & Normalize
-    // ---------------------------------------------------------
 
-    // 1. แปลงข้อมูล Booking
+    // Merge & Normalize
+    // แปลงข้อมูล Booking
     const bookings = bookingResult.rows.map(row => ({
       id: row.booking_id,
       type: 'booking',
       teacher_id: row.teacher_id,
-      teacher_name: `${row.name} ${row.surname}`, // ✅ รวมชื่อและนามสกุลส่งกลับไป
+      teacher_name: `${row.name} ${row.surname}`, // รวมชื่อและนามสกุล
       purpose: row.purpose,
       room_id: row.room_id,
       date: row.date,
@@ -987,7 +977,7 @@ export const getMyBookingHistory = async (req, res) => {
       id: row.schedule_id,
       type: 'class_schedule',
       purpose: row.subject_name,
-      teacher_name: row.teacher_name, // (ใน Table Schedule มีชื่อเก็บไว้อยู่แล้ว ใช้ได้เลย)
+      teacher_name: row.teacher_name,
       room_id: row.room_id,
       date: row.date,
       start_time: String(row.start_time).substring(0, 5),

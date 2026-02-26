@@ -39,7 +39,7 @@ export const handleExcelUpload = (req, res, next) => {
 
   upload(req, res, function (err) {
     if (err) {
-      // 🚨 ดัก Log กรณีไฟล์ผิดประเภท (มาจาก fileFilter)
+      // ดัก Log กรณีไฟล์ผิดประเภท (มาจาก fileFilter)
       if (err.message === 'INVALID_FILE_TYPE') {
         logger.warn('Invalid File Upload Attempt (Potential Malicious File)', {
           ip: req.ip,
@@ -49,7 +49,7 @@ export const handleExcelUpload = (req, res, next) => {
         return res.status(400).json({ message: 'รูปแบบไฟล์ไม่ถูกต้อง กรุณาอัปโหลดไฟล์ Excel (.xlsx, .xls) เท่านั้น' });
       }
 
-      // 🚨 ดัก Log กรณีไฟล์ใหญ่เกิน (มาจาก limits.fileSize)
+      // ดัก Log กรณีไฟล์ใหญ่เกิน (มาจาก limits.fileSize)
       if (err.code === 'LIMIT_FILE_SIZE') {
         logger.warn('Large File Upload Attempt Blocked (DoS Protection)', {
           ip: req.ip,
@@ -59,12 +59,12 @@ export const handleExcelUpload = (req, res, next) => {
         return res.status(400).json({ message: 'ไฟล์มีขนาดใหญ่เกินไป (จำกัดไม่เกิน 10MB)' });
       }
 
-      // 🚨 ดัก Error ปริศนาอื่นๆ
+      // ดัก Error ปริศนาอื่นๆ
       logger.error('Unexpected Upload Error', { error: err.message });
       return res.status(500).json({ message: 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์' });
     }
 
-    // ✅ ถ้าไฟล์ถูกต้อง ไม่มี Error ให้เดินทางไปด่านถัดไปได้เลย
+    // ถ้าไฟล์ถูกต้อง ไม่มี Error ให้เดินทางไป function ทัดไป ------>
     next();
   });
 };

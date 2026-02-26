@@ -46,28 +46,6 @@ const formatExcelData = (value, type = 'time') => {
   return String(value).trim();
 };
 
-// Helper Function: จัดการเรื่องวันที่และเวลา, ExcelJS มักจะ return Date Object มาเลย แต่เราเขียนเผื่อไว้ (ยังไม่เปิดใช้)
-// function parseExcelDate(value, type = 'date') {
-//     if (!value) return null;
-
-//     // กรณี 1: ExcelJS ส่งมาเป็น Date Object อยู่แล้ว (ดีที่สุด)
-//     if (value instanceof Date) {
-//         if (type === 'time') {
-//             // ดึงเฉพาะเวลา HH:mm:ss
-//             return value.toTimeString().split(' ')[0];
-//         } else {
-//             // ดึงเฉพาะวันที่ YYYY-MM-DD (แก้เรื่อง Timezone Offset เบื้องต้น)
-//             const year = value.getFullYear();
-//             const month = String(value.getMonth() + 1).padStart(2, '0');
-//             const day = String(value.getDate()).padStart(2, '0');
-//             return `${year}-${month}-${day}`;
-//         }
-//     }
-
-//     // กรณี 2: เป็น String (เช่น "10:30" หรือ "2023-12-01")
-//     return String(value).trim();
-// }
-
 const emailCooldowns = new Map();
 
 // /schedule/import 
@@ -386,7 +364,7 @@ export const confirmSchedules = async (req, res) => {
       await insertScheduleToDB(client, schedule); 
     }
 
-    await client.query('COMMIT'); // ✅ บันทึกจริงเมื่อทำครบทุกรายการ
+    await client.query('COMMIT'); // บันทึกจริงเมื่อทำครบทุกรายการ
     
     res.json({ 
       message: 'บันทึกข้อมูลทั้งหมดสำเร็จ', 
@@ -496,7 +474,6 @@ export const getSchedule = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงตารางเรียน' });
   }
 };
-
 
 export const getAllSchedules = async (req, res) => {
   try {

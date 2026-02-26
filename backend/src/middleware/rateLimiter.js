@@ -26,7 +26,7 @@ export const otpRateLimiter = rateLimit({
   standardHeaders: true, // ส่งข้อมูล Rate limit กลับไปใน Header
   legacyHeaders: false, // ปิดการใช้ Header เก่า
   handler: (req, res, next, options) => {
-    // 📝 [Log: Warn] บันทึกเมื่อมีการขอ OTP รัวๆ 
+    // [Log: Warn] บันทึกเมื่อมีการขอ OTP รัวๆ 
     logger.warn('OTP Request Rate Limit Exceeded (Potential Email Spam)', {
       ip: req.ip,
       attempted_email: req.body.email || 'Unknown', // เก็บอีเมลที่พยายามขอ (ถ้าส่งมา)

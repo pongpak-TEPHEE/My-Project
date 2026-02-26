@@ -8,8 +8,7 @@ export const getRoomScheduleToday = async (req, res) => {
   const { room_id } = req.params;
 
   try {
-
-    // 1. ดึงข้อมูลห้อง และเช็ค is_active
+    // ดึงข้อมูลห้อง และเช็ค is_active
     const roomResult = await pool.query(
       `SELECT room_id, room_type, location, capacity, is_active 
        FROM public."Rooms" 
@@ -23,7 +22,7 @@ export const getRoomScheduleToday = async (req, res) => {
 
     const room = roomResult.rows[0];
 
-    // 🛑 เช็คทันที: ถ้าห้องถูกปิดใช้งาน (Soft Deleted)
+    // ถ้าห้องถูกปิดใช้งาน (Soft Deleted)
     if (room.is_active === false) {
       return res.json({
         room,
@@ -33,10 +32,10 @@ export const getRoomScheduleToday = async (req, res) => {
       });
     }
 
-    // 2. ดึงตารางการใช้ห้อง "วันนี้" (รวม Booking และ Class Schedule)
+    // ดึงตารางการใช้ห้อง "วันนี้" (รวม Booking และ Class Schedule)
     // เราจะดึงข้อมูล 2 ตารางพร้อมกัน เพื่อความแม่นยำและได้ข้อมูลครบถ่วน
 
-    // 2.1 ดึง Booking
+    // ดึง Booking
     const bookingQuery = pool.query(
       `SELECT booking_id as id, start_time, end_time, purpose as title, 'booking' as type
        FROM public."Booking"
@@ -46,7 +45,7 @@ export const getRoomScheduleToday = async (req, res) => {
       [room_id]
     );
 
-    // 2.2 ดึง Schedules (ตารางเรียนปกติ) เพิ่มส่วนนี้เพื่อให้สมบูรณ์
+    // ดึง Schedules (ตารางเรียนปกติ) เพิ่มส่วนนี้เพื่อให้สมบูรณ์
     const classQuery = pool.query(
       `SELECT schedule_id as id, start_time, end_time, subject_name as title, 'class' as type, temporarily_closed
        FROM public."Schedules"
@@ -65,7 +64,7 @@ export const getRoomScheduleToday = async (req, res) => {
     });
 
 
-    // 3. คำนวณสถานะ Real-time (ว่าง / ไม่ว่าง)
+    // คำนวณสถานะ Real-time (ว่าง / ไม่ว่าง)
     const now = new Date();
     // แปลงเวลาปัจจุบันเป็น HH:MM:SS เพื่อเทียบกับ Database (Time type)
     const currentTimeString = now.toLocaleTimeString('th-TH', { hour12: false }); 
@@ -86,10 +85,10 @@ export const getRoomScheduleToday = async (req, res) => {
       }
     }
 
-    // 4. ส่งผลลัพธ์
+    // ส่งผลลัพธ์
     res.json({
       room,
-      status: currentStatus,       // 'available', 'busy', 'closed'
+      status: currentStatus,
       current_activity: currentActivity, // ชื่อวิชาที่เรียนอยู่ (ถ้ามี)
       schedule: allSchedules.map(s => ({
           ...s,
@@ -128,8 +127,6 @@ export const getAllRoom = async (req, res) => {
 
     const result = await pool.query(sql, params);
 
-    // 3. ปรับแต่งข้อมูลก่อนส่ง (Optional)
-    // เพิ่ม field ให้ Frontend เอาไปใช้ง่ายๆ เช่น status_color
     const formattedRooms = result.rows.map(room => ({
       ...room,
       // แปลง repair เป็น text หรือสี เพื่อให้ frontend เอาไปใช้ง่ายๆ
@@ -182,8 +179,7 @@ export const getRoomDetail = async (req, res) => {
   const { id } = req.params; // รับค่า room_id (เช่น 26504)
 
   try {
-    // 1. Query ข้อมูล โดย JOIN ตาราง Rooms กับ Equipments เข้าด้วยกัน
-    // ใช้ LEFT JOIN เผื่อว่าห้องนั้นอาจจะไม่มีข้อมูลในตารางอุปกรณ์ ก็ยังให้ดึงข้อมูลห้องมาได้
+    // Query ข้อมูล โดย JOIN ตาราง Rooms กับ Equipments เข้าด้วยกัน
     const result = await pool.query(
       `SELECT 
          r.room_id, 
@@ -208,7 +204,7 @@ export const getRoomDetail = async (req, res) => {
 
     const data = result.rows[0];
 
-    // 2. สร้างรายการอุปกรณ์ (Facilities List) ให้เป็นข้อความภาษาไทยตาม UI
+    // สร้างรายการอุปกรณ์
     const facilitiesList = [];
     
     if (data.projector > 0) facilitiesList.push(`เครื่องโปรเจคเตอร์ : ${data.projector} เครื่อง`);
@@ -216,7 +212,7 @@ export const getRoomDetail = async (req, res) => {
     if (data.computer > 0)  facilitiesList.push(`คอมพิวเตอร์ : ${data.computer} เครื่อง`);
     if (data.whiteboard > 0) facilitiesList.push(`กระดานไวท์บอร์ด : ${data.whiteboard} อัน`);
 
-    // 3. ส่งข้อมูลกลับไปในรูปแบบที่ Frontend เอาไปโชว์ได้เลย
+    // ส่งข้อมูลกลับไปในรูปแบบที่ Frontend เอาไปโชว์ได้เลย
     res.json({
       id: data.room_id,
       name: data.room_type,            // เช่น "Computer Lab"
@@ -255,7 +251,7 @@ export const createRoom = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่มต้น Transaction
 
-    // STEP 1: Insert ลงตาราง Rooms
+    // Insert ลงตาราง Rooms
     await client.query(
       `INSERT INTO public."Rooms" 
        (room_id, room_type, location, capacity, room_characteristics, repair, is_active)
@@ -264,7 +260,7 @@ export const createRoom = async (req, res) => {
     );
 
 
-    // STEP 2: Insert ลงตาราง Equipments (ถ้ามีข้อมูลส่งมา)
+    // Insert ลงตาราง Equipments (ถ้ามีข้อมูลส่งมา)
     if (equipments) {
       // สร้าง equipment_id อัตโนมัติ (เช่น eq-26504) เพื่อให้ง่ายและไม่ซ้ำ
       // หรือถ้าอยากรับจาก body ก็ใช้ req.body.equipment_id ได้ครับ
@@ -290,7 +286,7 @@ export const createRoom = async (req, res) => {
     res.status(201).json({ message: 'เพิ่มห้องและอุปกรณ์สำเร็จเรียบร้อย' });
 
   } catch (error) {
-    await client.query('ROLLBACK'); // ❌ ยกเลิกทั้งหมดถ้ามี Error
+    await client.query('ROLLBACK'); // ยกเลิกทั้งหมดถ้ามี Error
     console.error('Create Room Error:', error);
 
     if (error.code === '23505') {
@@ -312,15 +308,14 @@ export const deleteRoom = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่ม Transaction
 
-    // STEP 1: ตรวจสอบประวัติการใช้งาน (Check Dependencies)
-    
-    // เช็ค 1: มีใน Booking หรือไม่? (เช็คหมดทั้งอดีตและอนาคต เพื่อรักษา Data Integrity)
+    // ตรวจสอบประวัติการใช้งาน (Check Dependencies)
+    // เช็คว่ามีใน Booking หรือไม่? (เช็คหมดทั้งอดีตและอนาคต เพื่อรักษา Data Integrity)
     const checkBooking = await client.query(
       `SELECT 1 FROM public."Booking" WHERE room_id = $1 LIMIT 1`,
       [room_id]
     );
 
-    // เช็ค 2: มีใน Schedules (ตารางสอน) หรือไม่?
+    // เช็คว่ามีใน Schedules (ตารางสอน) หรือไม่?
     const checkSchedule = await client.query(
       `SELECT 1 FROM public."Schedules" WHERE room_id = $1 LIMIT 1`,
       [room_id]
@@ -328,15 +323,15 @@ export const deleteRoom = async (req, res) => {
 
     const hasHistory = (checkBooking.rowCount > 0 || checkSchedule.rowCount > 0);
 
-    // STEP 2: ตัดสินใจว่าจะลบแบบไหน?
+    // ตัดสินใจว่าจะลบแบบไหน? --------------------
 
     if (!hasHistory) {
-      // ✅ กรณี A: "ไม่มีประวัติเลย" -> ลบถาวร (Hard Delete)
+      // กรณี "ไม่มีประวัติเลย" -> ลบถาวร (Hard Delete)
       
-      // 1. ลบ Equipment ก่อน (ถ้ามี FK constraint)
+      // ลบ Equipment ก่อน (ถ้ามี FK constraint)
       await client.query(`DELETE FROM public."Equipment" WHERE room_id = $1`, [room_id]);
       
-      // 2. ลบ Rooms
+      // ลบ Rooms
       const deleteResult = await client.query(
         `DELETE FROM public."Rooms" WHERE room_id = $1 RETURNING room_id`,
         [room_id]
@@ -352,9 +347,9 @@ export const deleteRoom = async (req, res) => {
       });
 
     } else {
-      // ⚠️ กรณี B: "มีประวัติการใช้งาน" -> ปิดการใช้งาน (Soft Delete)
+      // กรณี "มีประวัติการใช้งาน" -> ปิดการใช้งาน (Soft Delete)
       
-      // 1. ยกเลิก Booking ในอนาคต (เฉพาะที่ยังไม่จบ)
+      // ยกเลิก Booking ในอนาคต (เฉพาะที่ยังไม่จบ)
       await client.query(
         `UPDATE public."Booking"
          SET status = 'cancelled'
@@ -364,7 +359,7 @@ export const deleteRoom = async (req, res) => {
         [room_id]
       );
 
-      // 2. เปลี่ยน is_active เป็น false
+      // เปลี่ยน is_active เป็น false
       const updateResult = await client.query(
         `UPDATE public."Rooms" 
          SET is_active = FALSE 
@@ -452,7 +447,6 @@ export const editRoom = async (req, res) => {
       return res.status(404).json({ message: 'ไม่พบห้องที่ต้องการแก้ไข' });
     }
 
-
     // อัปเดตอุปกรณ์ (เหมือนเดิม)
     if (equipments) {
       const updateEqResult = await client.query(
@@ -469,7 +463,7 @@ export const editRoom = async (req, res) => {
         ]
       );
 
-      // 2.2 ถ้าไม่เจอ (ห้องเก่าอาจจะยังไม่มีอุปกรณ์) -> ให้ Insert ใหม่
+      // ถ้าไม่เจอ (ห้องเก่าอาจจะยังไม่มีอุปกรณ์) -> ให้ Insert ใหม่
       if (updateEqResult.rowCount === 0) {
         const equipment_id = `eq-${room_id}`;
         await client.query(
@@ -503,10 +497,10 @@ export const editRoom = async (req, res) => {
 // /rooms/:id/qrcode
 // ฟังก์ชันสร้าง QR Code ของห้อง
 export const getRoomQRCode = async (req, res) => {
-  const { id } = req.params; // รับ room_id เช่น 26504
+  const { id } = req.params;
 
   try {
-    // 1. ตรวจสอบก่อนว่าห้องมีจริงไหม
+    // ตรวจสอบก่อนว่าห้องมีจริงไหม
     const roomCheck = await pool.query('SELECT room_id FROM public."Rooms" WHERE room_id = $1', [id]);
     if (roomCheck.rows.length === 0) {
       return res.status(404).json({ message: 'ไม่พบห้องนี้ในระบบ' });
@@ -514,12 +508,11 @@ export const getRoomQRCode = async (req, res) => {
 
     // 2. กำหนดข้อมูลที่จะใส่ใน QR (เช่น URL ไปหน้าจองห้องนั้น)
     // เวลา User สแกนปุ๊บ จะเด้งเข้าหน้าเว็บห้องนั้นเลย
-    // หรือถ้าจะเอาแค่ Text "26504" ก็ใส่แค่ id
     const qrData = id.toString(); // ต้องแปลงเป็น String ก่อนนะครับ
 
     const qrImage = await QRCode.toDataURL(qrData);
 
-    // 4. ส่งรูปกลับไป (Frontend เอาไปใส่ใน <img src="..."> ได้เลย)
+    // ส่งรูปกลับไป (Frontend เอาไปใส่ใน <img src="..."> ได้เลย)
     res.json({ 
       room_id: id, 
       qr_code: qrImage 
@@ -537,7 +530,7 @@ export const findAvailableRooms = async (req, res) => {
   // POST /rooms/search
   const { date, start_time, end_time, capacity } = req.body;
 
-  // 1. Validation เบื้องต้น
+  // Validation เบื้องต้น
   if (!date || !start_time || !end_time) {
     return res.status(400).json({ message: 'กรุณาระบุวันที่, เวลาเริ่ม และเวลาสิ้นสุด' });
   }
@@ -565,14 +558,14 @@ export const findAvailableRooms = async (req, res) => {
       LEFT JOIN public."Equipment" eq ON r.room_id = eq.room_id
 
       WHERE 
-        -- 1. ห้องต้องเปิดใช้งาน และ ไม่เสีย
+        -- ห้องต้องเปิดใช้งาน และ ไม่เสีย
         r.is_active = TRUE 
         AND (r.repair IS NULL OR r.repair = FALSE)
         
-        -- 2. ที่นั่งต้องพอ (แสดงข้อมูลที่นั่งที่มากพอรับจำนวนนิสิต)
+        -- ที่นั่งต้องพอ (แสดงข้อมูลที่นั่งที่มากพอรับจำนวนนิสิต)
         AND ($4::int IS NULL OR r.capacity >= $4)
 
-        -- 3. ต้องไม่มี Booking มาขวาง (Overlap Logic)
+        -- ต้องไม่มี Booking มาขวาง
         AND r.room_id NOT IN (
           SELECT b.room_id 
           FROM public."Booking" b
@@ -581,7 +574,7 @@ export const findAvailableRooms = async (req, res) => {
           AND (b.start_time < $3 AND b.end_time > $2) -- สูตรเช็คเวลาชน
         )
 
-        -- 4. ต้องไม่มี ตารางเรียน (Schedules) มาขวาง
+        -- ต้องไม่มี ตารางเรียน (Schedules) มาขวาง
         AND r.room_id NOT IN (
           SELECT s.room_id 
           FROM public."Schedules" s

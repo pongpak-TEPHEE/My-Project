@@ -3,7 +3,6 @@ import swaggerUi from 'swagger-ui-express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ท่าไม้ตายสร้างตัวแปรหาตำแหน่งไฟล์ปัจจุบัน (เพราะเราใช้ ES Modules)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
