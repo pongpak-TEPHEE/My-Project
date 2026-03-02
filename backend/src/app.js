@@ -6,10 +6,13 @@ import { globalErrorHandler } from './middleware/errorHandler.js'
 // นำเข้า Swagger
 import { swaggerUi, specs } from './config/swagger.js'; // ปรับ path ตามจริงนะครับ
 
-// สร้างเส้นทางสำหรับดูหน้าเว็บคู่มือ (เอาไว้ก่อน app.listen)
-
 
 const app = express();
+
+// ให้ Express อ่าน IP จริงทะลุผ่าน Nginx/Docker Proxy
+app.set('trust proxy', 1);
+
+app.use(express.json());
 
 app.use(helmet()); // ปิดบัง Server Info และกัน XSS เบื้องต้น
 
@@ -22,20 +25,8 @@ app.use(cors({
 }));
 
 
-
-
-app.set('trust proxy', 1);
 app.use(globalLimiter);
-app.use(express.json());
 
-app.use((err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({
-    status: 'error',
-    message: err.message || "Someting is wrong. ⚠️⚠️⚠️⚠️", 
-    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack // ซ่อน stack trace
-  });
-});
 
 // All of routes 
 import authRoutes from './routes/auth.routes.js';           // requestOTP, verifyOTP, register
@@ -43,7 +34,6 @@ import bookingsRoutes from './routes/bookings.route.js';    // createBooking, ge
 import roomsRoutes from './routes/rooms.route.js';          // getRoomScheduleToday, getAllRooms
 import usersRoutes from './routes/users.route.js';          // getUsers
 import scheduleRoutes from './routes/schedule.routes.js';
-
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
