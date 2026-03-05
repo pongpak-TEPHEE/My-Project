@@ -184,7 +184,7 @@ export const getApprovedBookings = async (req, res) => {
 };
 
 // /bookings/:id
-// ใช้เมื่อสแกร QR code ห้องระบบ frontend จะส่ง room_id มาตรวจสอบหลังบ้านว่าห้องนี้เวลานี้ห้องว่างไหม ณ ขณะ ที่เราแสกน
+// ใช้เมื่อแสกน QR code ห้องระบบ frontend จะส่ง room_id มาตรวจสอบหลังบ้านว่าห้องนี้เวลานี้ห้องว่างไหม ณ ขณะ ที่เราแสกน
 export const getRoomStatus = async (req, res) => {
   const { id } = req.params;
 

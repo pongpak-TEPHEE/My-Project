@@ -496,6 +496,7 @@ export const editRoom = async (req, res) => {
 
 // /rooms/:id/qrcode
 // ฟังก์ชันสร้าง QR Code ของห้อง
+// router.get('/:id/qrcode', getRoomQRCode);
 export const getRoomQRCode = async (req, res) => {
   const { id } = req.params;
 
@@ -516,6 +517,40 @@ export const getRoomQRCode = async (req, res) => {
     res.json({ 
       room_id: id, 
       qr_code: qrImage 
+    });
+
+  } catch (error) {
+    console.error('QR Gen Error:', error);
+    res.status(500).json({ message: 'สร้าง QR Code ไม่สำเร็จ' });
+  }
+};
+
+// router.get('/:id/qrcodeURL', getRoomQRCodeURL);
+export const getRoomQRCodeURL = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 1. ตรวจสอบก่อนว่าห้องมีจริงไหม
+    const roomCheck = await pool.query('SELECT room_id FROM public."Rooms" WHERE room_id = $1', [id]);
+    if (roomCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'ไม่พบห้องนี้ในระบบ' });
+    }
+
+    // 2. กำหนดข้อมูล URL ที่จะฝังลงใน QR Code
+    // ⚠️ ให้ใช้ URL ของ Frontend (ดึงจาก .env) ถ้าไม่มีให้ใช้ localhost ของ Vite เป็นค่าเริ่มต้น
+    const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
+    
+    // สร้างเป็น Link เต็มๆ เช่น http://localhost:5173/rooms/26504
+    const qrData = `${frontendURL}/rooms/${id}`; 
+
+    // 3. สร้างรูป QR Code จาก URL
+    const qrImage = await QRCode.toDataURL(qrData);
+
+    // 4. ส่งรูปกลับไปให้ Frontend
+    res.json({ 
+      room_id: id, 
+      qr_code: qrImage,
+      url: qrData // (แถม) ส่ง URL ตัวเต็มกลับไปให้ Frontend ดูด้วย เผื่อเอาไปทำปุ่ม "คัดลอกลิงก์"
     });
 
   } catch (error) {

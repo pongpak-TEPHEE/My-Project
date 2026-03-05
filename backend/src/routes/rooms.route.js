@@ -10,7 +10,8 @@ import {
     deleteRoom,
     editRoom,
     getAllRoomRepair,
-    findAvailableRooms
+    findAvailableRooms,
+    getRoomQRCodeURL
 } 
 from '../controllers/rooms.controller.js';
 
@@ -65,6 +66,9 @@ const router = express.Router();
  *               message: "สร้าง QR Code ไม่สำเร็จ"
  */
 router.get('/:id/qrcode', getRoomQRCode);
+
+// ⚠️⚠️⚠️⚠️ ไม่ได้ใส่ Swagger
+router.get('/:id/qrcodeURL', getRoomQRCodeURL)
 
 // ไม่มี authenticateToken เพราะเป็น Public Access
 /**
