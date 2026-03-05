@@ -540,8 +540,8 @@ export const getRoomQRCodeURL = async (req, res) => {
     // ⚠️ ให้ใช้ URL ของ Frontend (ดึงจาก .env) ถ้าไม่มีให้ใช้ localhost ของ Vite เป็นค่าเริ่มต้น
     const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5173';
     
-    // สร้างเป็น Link เต็มๆ เช่น http://localhost:5173/rooms/26504
-    const qrData = `${frontendURL}/rooms/${id}`; 
+    // สร้างเป็น Link เต็มๆ เช่น http://localhost:5173/bookings/26504
+    const qrData = `${frontendURL}/bookings/${id}`; 
 
     // 3. สร้างรูป QR Code จาก URL
     const qrImage = await QRCode.toDataURL(qrData);
