@@ -1,7 +1,7 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
 import crypto from 'crypto'; // สำหรับเข้าระหัส schedule_id
-import { sendBookingCancelledEmail } from '../services/mailer.js';
+import { sendScheduleBookingCancelledEmail } from '../services/mailer.js';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelData = (value, type = 'time') => {
@@ -273,7 +273,7 @@ export const importClassSchedules = async (req, res) => {
                               // บันทึกเวลาที่ส่งลง Map
                               emailCooldowns.set(cooldownKey, Date.now());
 
-                              sendBookingCancelledEmail(
+                              sendScheduleBookingCancelledEmail(
                                   toEmail, 
                                   userName, 
                                   roomId, 
@@ -282,9 +282,9 @@ export const importClassSchedules = async (req, res) => {
                                   subjectName
                               );
                               
-                              console.log(`📧 สั่งส่งอีเมลแจ้งยกเลิก Booking ID: ${conflict.booking_id} ไปที่ ${toEmail} เรียบร้อยแล้ว`);
+                              console.log(`สั่งส่งอีเมลแจ้งยกเลิก Booking ID: ${conflict.booking_id} ไปที่ ${toEmail} เรียบร้อยแล้ว`);
                             }
-                            console.log(`⚠️ ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
+                            console.log(`ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
                           }
                         }
                     }
@@ -624,7 +624,7 @@ export const updateScheduleStatus = async (req, res) => {
     
     const params = [temporarily_closed, id];
 
-    // 🔒 กฎ: ถ้า "ไม่ใช่ Admin" ต้องเช็คว่า teacher_id ตรงกับ user_id ไหม
+    // ถ้า "ไม่ใช่ staff" ต้องเช็คว่า teacher_id ตรงกับ user_id ไหม
     // (สมมติว่าในตาราง Schedules มีคอลัมน์ชื่อ teacher_id นะครับ)
     if (role.toLowerCase().trim() !== 'staff') {
         sql += ` AND teacher_id = $3`; 

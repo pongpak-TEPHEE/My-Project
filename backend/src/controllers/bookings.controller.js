@@ -1,5 +1,5 @@
 import { pool } from '../config/db.js';
-import { sendBookingStatusEmail } from '../services/mailer.js';
+import { sendBookingStatusEmail, sendBookingCancelledEmail } from '../services/mailer.js';
 import crypto from 'crypto'; // ใช้ในการเ้ขารหัส booking_id
 import { logger } from '../utils/logger.js';
 
@@ -447,7 +447,7 @@ export const createBookingForStaff = async (req, res) => {
     if (roomResult.rowCount === 0) {
       return res.status(404).json({ 
         success: false, 
-        message: "ไม่พบข้อมูลห้องนี้ในระบบครับ" 
+        message: "ไม่พบข้อมูลห้องนี้ในระบบ" 
       });
     }
 
@@ -457,7 +457,7 @@ export const createBookingForStaff = async (req, res) => {
     if (room.repair === true) {
       return res.status(400).json({ 
         success: false, 
-        message: "ไม่สามารถจองได้ เนื่องจากห้องนี้ถูกระงับการใช้งานชั่วคราวครับ" 
+        message: "ไม่สามารถจองได้ เนื่องจากห้องนี้ถูกระงับการใช้งานชั่วคราว" 
       });
     }
 
@@ -563,9 +563,8 @@ export const updateBookingStatus = async (req, res) => {
 
     const booking = updateResult.rows[0];
 
-    // ดึงข้อมูลเพิ่มเติมเพื่อเตรียมส่งเมล
     const details = await pool.query(
-      `SELECT u.email, r.room_id
+      `SELECT u.email, u.name, u.surname, r.room_id, r.room_type 
        FROM public."Booking" b
        JOIN public."Users" u ON b.teacher_id = u.user_id
        JOIN public."Rooms" r ON b.room_id = r.room_id
@@ -574,22 +573,27 @@ export const updateBookingStatus = async (req, res) => {
     );
 
     if (details.rows.length > 0) {
-      const { email, room_name } = details.rows[0];
+
+      const { email, name, surname, room_id, room_type } = details.rows[0];
+      
+      const teacherFullName = `${name} ${surname}`;
+      
+      const displayRoomName =  room_id || room_type; 
 
       // ระบบ Rate Limit สำหรับการส่งอีเมล (Anti-Spam)
-      // สร้าง Key เฉพาะตัว เช่น "booking_b0001_approved"
       const cooldownKey = `booking_${id}_${status}`; 
-      const COOLDOWN_MINUTES = 5; // ห้ามส่งอีเมลสถานะเดิมซ้ำ ภายใน 5 นาที
+      const COOLDOWN_MINUTES = 5; 
 
       let shouldSendEmail = true;
 
+      // เช่น const emailCooldowns = new Map();
       if (emailCooldowns.has(cooldownKey)) {
         const lastSentTime = emailCooldowns.get(cooldownKey);
         const diffMinutes = (Date.now() - lastSentTime) / (1000 * 60);
 
         if (diffMinutes < COOLDOWN_MINUTES) {
           shouldSendEmail = false;
-          console.log(`⏳ [Rate Limit] ป้องกันการ Spam: ข้ามการส่งเมลสถานะ ${status} ให้ ${email} (เพิ่งส่งไปเมื่อ ${diffMinutes.toFixed(1)} นาทีที่แล้ว)`);
+          console.log(`Rate Limit ป้องกันการ Spam: ข้ามการส่งเมลสถานะ ${status} ให้ ${email} (เพิ่งส่งไปเมื่อ ${diffMinutes.toFixed(1)} นาทีที่แล้ว)`);
         }
       }
 
@@ -597,17 +601,25 @@ export const updateBookingStatus = async (req, res) => {
       if (shouldSendEmail) {
         emailCooldowns.set(cooldownKey, Date.now());
 
-        // ส่งเมล (ยิงแล้วลืมเลย ไม่ต้องรอ await ก็ได้เพื่อให้ response เร็ว)
-        sendBookingStatusEmail(email, {
-          status: status,
-          room_name: room_name, // ตอนนี้มีค่าแล้ว เพราะแก้ SQL ให้
-          date: booking.date,
-          start_time: booking.start_time,
-          end_time: booking.end_time,
-          reject_reason: reject_reason || '' // รับค่าจาก req.body ถ้ามี
+        const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
         });
 
-        console.log(` สั่งส่งอีเมลแจ้งสถานะ ${status} ไปที่ ${email} เรียบร้อยแล้ว`);
+        const formattedStartTime = booking.start_time.substring(0, 5);
+        const formattedEndTime = booking.end_time.substring(0, 5);
+
+        sendBookingStatusEmail(email, {
+          teacher_name: teacherFullName,
+          status: status,
+          room_name: displayRoomName, 
+          room_type: room_type,
+          date: formattedDate,           
+          start_time: formattedStartTime, 
+          end_time: formattedEndTime,     
+          reject_reason: reject_reason || '' 
+        });
       }
     }
 
@@ -618,7 +630,7 @@ export const updateBookingStatus = async (req, res) => {
 
     // บันทึกการกระทำที่สำคัญ
     logger.info('Booking Status Changed', {
-      action_by_user_id: req.user.user_id, // Staff คนไหนกด
+      action_by_user_id: req.user.user_id, 
       target_booking_id: id,
       new_status: status,
       ip: req.ip
@@ -726,16 +738,18 @@ export const getMyBookings = async (req, res) => {
 // ยกเลิกการจอง (Cancel Booking)
 export const cancelBooking = async (req, res) => {
   const { id } = req.params; // Booking ID ที่จะยกเลิก
-  const teacher_id = req.user.user_id; // ต้องเป็นเจ้าของรายการเท่านั้นถึงจะลบได้
+  const { cancel_reason } = req.body || {}; 
+  const actionUserId = req.user.user_id;
   const userRole = req.user.role;
 
   try {
-    // ตรวจสอบก่อนว่ารายการนี้เป็นของคนนี้จริงไหม + สถานะยกเลิกได้ไหม
     const checkQuery = await pool.query(
-      `SELECT * FROM public."Booking" 
-       WHERE booking_id = $1 
-       AND (teacher_id = $2 OR $3 = 'staff')`,
-      [id, teacher_id, userRole]
+      `SELECT b.*, u.email, u.name, u.surname 
+       FROM public."Booking" b
+       JOIN public."Users" u ON b.teacher_id = u.user_id
+       WHERE b.booking_id = $1 
+       AND (b.teacher_id = $2 OR $3 = 'staff')`, // เผื่อ admin ไว้ให้ด้วยครับ
+      [id, actionUserId, userRole]
     );
 
     if (checkQuery.rows.length === 0) {
@@ -744,7 +758,6 @@ export const cancelBooking = async (req, res) => {
 
     const booking = checkQuery.rows[0];
 
-    // เช็คว่ารายการผ่านไปหรือยัง (ป้องกันการยกเลิกย้อนหลัง)
     const bookingDate = new Date(booking.date);
     const today = new Date();
     today.setHours(0, 0, 0, 0); // set เวลาให้เป็น 00:00 เพื่อเทียบแค่วันที่
@@ -753,18 +766,39 @@ export const cancelBooking = async (req, res) => {
         return res.status(400).json({ message: 'ไม่สามารถยกเลิกรายการย้อนหลังได้' });
     }
 
-    // เช็คสถานะ (ถ้าโดน reject หรือ cancel ไปแล้ว จะยกเลิกไม่ได้)
     if (['rejected', 'cancelled'].includes(booking.status)) {
         return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกหรือปฏิเสธไปแล้ว' });
     }
 
-    // อัปเดตสถานะ
     await pool.query(
       `UPDATE public."Booking" 
        SET status = 'cancelled' 
        WHERE booking_id = $1`,
       [id]
     );
+
+    // ถ้าคนที่กดยกเลิกไม่ใช้คนจองห้อง แสดงว่าเป็น admin (ถ้า admin จองเอง ยกเลิกเองจะไม่ส่ง email)
+    if (actionUserId !== booking.teacher_id) {
+
+        const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        });
+        
+        const timeSlot = `${booking.start_time.substring(0, 5)} - ${booking.end_time.substring(0, 5)} น.`;
+        
+        const teacherFullName = `${booking.name} ${booking.surname}`;
+
+        sendBookingCancelledEmail(
+            booking.email,
+            teacherFullName,
+            booking.room_id,
+            formattedDate,
+            timeSlot,
+            cancel_reason || 'เจ้าหน้าที่ได้ทำการยกเลิกการจองนี้'
+        );
+        
+        console.log(`[System] สั่งส่งอีเมลแจ้งยกเลิกการจองให้ ${booking.email} เรียบร้อยแล้ว`);
+    }
 
     res.json({ message: 'ยกเลิกการจองเรียบร้อยแล้ว' });
 
@@ -785,6 +819,22 @@ export const editBooking = async (req, res) => {
   if (!purpose || !date || !start_time || !end_time) {
     return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
   }
+
+
+  // เช็คว่าเวลาสิ้นสุด ต้องมากกว่าเวลาเริ่มต้น
+  if (start_time >= end_time) {
+    return res.status(400).json({ message: 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น' });
+  }
+
+  // เช็คการจองย้อนหลัง (ห้ามเลือกวันที่/เวลาในอดีต)
+  const currentDateTime = new Date(); // เวลาปัจจุบันของระบบ
+  const requestedDateTime = new Date(`${date}T${start_time}`); // เวลาที่ผู้ใช้ขอแก้
+
+  // ถ้าเวลาที่ขอแก้ไข น้อยกว่าเวลาปัจจุบัน = ย้อนหลัง
+  if (requestedDateTime < currentDateTime) {
+    return res.status(400).json({ message: 'ไม่สามารถแก้ไขการจองไปเป็นวันและเวลาย้อนหลังได้' });
+  }
+  // ==========================================
 
   try {
     // ดึงข้อมูลเก่ามาก่อน เพื่อเช็คสิทธิ์ และเอา room_id
@@ -876,7 +926,6 @@ export const editBooking = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล' });
   }
 };
-
 // /bookings//my-bookings/active (GET method) 
 // การจองของฉัน (Active): วันปัจจุบันหรืออนาคต + (Pending/Approved)
 export const getMyActiveBookings = async (req, res) => {
