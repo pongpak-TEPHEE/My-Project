@@ -2,10 +2,29 @@ import { pool } from '../config/db.js';
 
 
 // /users
-// (ยังไม่เปิดใช้งาน !!!!) ดึงรายชื่อของ ผู้ใช้งานทั้งหมดของระบบ
+// ดึงข้อมูลผู้ใช้งานทั้งหมด
 export const getUsers = async (req, res) => {
-  const result = await pool.query('SELECT * FROM public."Users"');
-  res.json(result.rows);
+  try {
+    // req.user ได้มาจาก authenticateToken middleware
+    const loggedInUserId = req.user?.user_id;
+
+    if (!loggedInUserId) {
+      // เผื่อกรณีไม่มีข้อมูล user ใน req ให้ส่งกลับไปทั้งหมดหรือจัดการตามเหมาะสม
+      const result = await pool.query('SELECT * FROM public."Users"');
+      return res.json(result.rows);
+    }
+    
+    // ดึงข้อมูลผู้ใช้งานทั้งหมด โดยยกเว้นคนที่กำลัง Login อยู่
+    const result = await pool.query(
+      'SELECT * FROM public."Users" WHERE user_id != $1',
+      [loggedInUserId]
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get Users Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูล' });
+  }
 };
 
 // /users/create
