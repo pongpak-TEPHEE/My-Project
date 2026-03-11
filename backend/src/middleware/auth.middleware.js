@@ -14,59 +14,57 @@ export const authenticateToken = async (req, res, next) => {
   }
 
   try {
-    // ถอดรหัส Token
-    const decodedTK = jwt.verify(token, process.env.JWT_SECRET);
-
-    // เช็คว่า User คนนี้ยัง "มีตัวตน" และ "ใช้งานได้" อยู่หรือไม่
-    // และนำ session_id มาตรวจสอบด้วย (Single Active Session)
-    const userCheck = await pool.query(
-      `SELECT is_active, session_id FROM public."Users" WHERE user_id = $1`,
-      [decodedTK.user_id]
-    );
-
-    if (userCheck.rows.length === 0) {
-      return res.status(401).json({ message: 'ไม่พบผู้ใช้งานนี้ในระบบแล้ว' });
-    }
-
-    if (userCheck.rows[0].is_active === false) {
-      return res.status(403).json({ message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่' });
-    }
-
-    // เช็ค Session ID ปัจจุบัน ว่าตรงกับใน Token หรือไม่
-    // ถ้าไม่ตรง หรือ เป็น null แสดงว่าเข้าสู่ระบบจากที่อื่น หรือ ออกจากระบบไปแล้ว
-    if (userCheck.rows[0].session_id !== decodedTK.session_id) {
-      return res.status(401).json({
-        message: 'มีการเข้าสู่ระบบจากอุปกรณ์อื่น ระบบได้ทำการออกจากระบบให้คุณอัตโนมัติ',
-        code: 'SESSION_SUPERSEDED' // ส่ง code พิเศษไปให้หน้าบ้านเช็ค
-      });
-    }
-
+    // ถอดรหัส Token แค่ "ครั้งเดียว"
     const secretKey = process.env.JWT_SECRET || 'your_secret_key';
-    // ตรวจสอบ Signature และวันหมดอายุ
-    // ถ้า Token มั่ว หรือหมดอายุ มันจะ Error เด้งไป catch ทันที (ไม่ต้องเสียเวลาเช็ค DB)
-    const decoded = jwt.verify(token, secretKey);
+    const decoded = jwt.verify(token, secretKey); 
+    // ถ้า Token หมดอายุ หรือมั่ว มันจะ Error แล้วเด้งไป catch ทันที
 
-    // เช็ค Blacklist (ถ้า Token ถูกต้องตามรูปแบบ ค่อยมาเช็คว่าโดนแบนไหม)
+    // เช็ค Blacklist ก่อน (ถ้า Token ถูกแบน จะได้ไม่ต้องไป Query ตาราง Users ให้เสียเวลา)
     const blacklistCheck = await pool.query(
       'SELECT token FROM public."TokenBlacklist" WHERE token = $1',
       [token]
     );
 
     if (blacklistCheck.rows.length > 0) {
-      return res.status(403).json({ message: 'Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)' });
+      return res.status(401).json({ message: 'Token นี้ถูกยกเลิกแล้ว (กรุณา Login ใหม่)' });
     }
 
-    // แนบข้อมูลผู้ใช้
-    // ⚠️ หมายเหตุ: ข้อมูลใน decoded จะมาจากตอนที่เรา jwt.sign
-    // จากโค้ด verifyOTP ก่อนหน้านี้ เราใช้ 'user_id' ดังนั้นเรียกใช้ต้อง req.user.user_id นะครับ
-    req.user = decoded;
+    // เช็คสถานะ User และ Session ID จาก DB
+    const userCheck = await pool.query(
+      `SELECT is_active, session_id FROM public."Users" WHERE user_id = $1`,
+      [decoded.user_id]
+    );
 
+    // ถ้าหา User ไม่เจอ
+    if (userCheck.rows.length === 0) {
+      return res.status(401).json({ message: 'ไม่พบผู้ใช้งานนี้ในระบบแล้ว' });
+    }
+
+    // ถ้า User โดนระงับการใช้งาน
+    if (userCheck.rows[0].is_active === false) {
+      return res.status(403).json({ message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่' });
+    }
+
+    // เช็ค Session Override (เตะเครื่องเก่าออก)
+    // ดักจับกรณี: ไม่มี session_id ใน Token (Token รุ่นเก่า) หรือ session_id ไม่ตรงกัน
+    if (!decoded.session_id || userCheck.rows[0].session_id !== decoded.session_id) {
+      return res.status(401).json({
+        message: 'มีการเข้าสู่ระบบจากอุปกรณ์อื่น ระบบได้ทำการออกจากระบบให้คุณอัตโนมัติ',
+        code: 'SESSION_SUPERSEDED' //ส่ง code พิเศษไปให้หน้าบ้านเช็ค
+      });
+    }
+
+    // ผ่านทุกด่าน! แนบข้อมูลผู้ใช้แล้วไปต่อ
+    req.user = decoded;
     next();
 
   } catch (error) {
-    // แยก Error ให้ชัดเจนขึ้นนิดนึง
+    // แยก Error ให้ชัดเจน
     if (error.name === 'TokenExpiredError') {
-      return res.status(403).json({ message: 'Token หมดอายุแล้ว (Expired)' });
+      return res.status(401).json({ 
+          message: 'Token หมดอายุแล้ว (Expired)',
+          code: 'TOKEN_EXPIRED'
+      }); 
     }
     return res.status(403).json({ message: 'Token ไม่ถูกต้อง (Invalid)' });
   }

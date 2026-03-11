@@ -1,3 +1,4 @@
 [2026-03-11 12:34:53] WARN: OTP Request Rate Limit Exceeded (Potential Email Spam) {"ip":"2405:9800:b540:76d4:5d40:f07f:9f5f:8543","attempted_email":"pongpak.te@ku.th","path":"/auth/request-otp"}
 [2026-03-11 12:38:24] WARN: OTP Request Rate Limit Exceeded (Potential Email Spam) {"ip":"2405:9800:b540:76d4:5d40:f07f:9f5f:8543","attempted_email":"pongpak.te@ku.th","path":"/auth/request-otp"}
 [2026-03-11 17:48:04] ERROR: Brute-force Attack Detected (Login/Verify OTP) {"ip":"2405:9800:b540:76d4:9561:bfee:e512:f709","attempted_email":"pongpak.te@ku.th","path":"/auth/verify-otp","method":"POST"}
+[2026-03-11 22:38:14] WARN: OTP Request Rate Limit Exceeded (Potential Email Spam) {"ip":"2405:9800:b540:76d4:f52f:b720:4912:a269","attempted_email":"pongpak.te@ku.th","path":"/auth/request-otp"}

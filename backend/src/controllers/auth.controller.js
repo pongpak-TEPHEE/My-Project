@@ -6,7 +6,7 @@ import { sendOTPEmail } from '../services/mailer.js';
 // /auth/request-otp
 // ขอ OTP ส่งไปยัง email.ku.th
 export const requestOTP = async (req, res) => {
-  const { email} = req.body;
+  const { email } = req.body;
 
   // ตรวจ domain (เฉพาะ @ku.th)
   if (!email.endsWith('@ku.th')) {
@@ -25,7 +25,7 @@ export const requestOTP = async (req, res) => {
     if (lastOtpCheck.rows.length > 0) {
       const lastRequest = new Date(lastOtpCheck.rows[0].created_at);
       const now = new Date();
-     
+
       // คำนวณความต่างเวลา (หน่วยวินาที)
       const diffSeconds = (now - lastRequest) / 1000;
 
@@ -64,9 +64,9 @@ export const requestOTP = async (req, res) => {
     }
     res.json({
 
-        message: `ส่งรหัส OTP ไปที่ ${email} เรียบร้อยแล้ว`,
+      message: `ส่งรหัส OTP ไปที่ ${email} เรียบร้อยแล้ว`,
 
-        requestId: requestId
+      requestId: requestId
     });
   } catch (error) {
     console.error('Request OTP Error:', error);
@@ -93,7 +93,7 @@ export const verifyOTP = async (req, res) => {
 
     // ดึงข้อมูล User
     const userResult = await pool.query(
-      'SELECT user_id, name, surname, role, session_id FROM public."Users" WHERE email = $1',
+      'SELECT user_id, title, name, surname, email, role, session_id FROM public."Users" WHERE email = $1',
       [email]
     );
 
@@ -104,34 +104,26 @@ export const verifyOTP = async (req, res) => {
     const user = userResult.rows[0];
     console.log("user = {}", user);
 
-    // Check if user is already logged in
-    if (user.session_id !== null) {
-        // แปลว่ามีคนใช้ Session นี้อยู่ก่อนแล้ว
-        return res.status(403).json({ 
-            message: 'บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่นอยู่แล้ว กรุณาทำการออกจากระบบเครื่องเก่าก่อน',
-            code: 'ALREADY_LOGGED_IN'
-        });
-    }
 
     // 1. สร้าง session_id ใหม่ (ใช้ crypto.randomBytes จะได้ string ความยาว 20 ตัวอักษร พอดีกับโครงสร้าง DB)
     const sessionId = crypto.randomBytes(10).toString('hex');
 
     // 2. สร้าง JWT Token โดยฝัง session_id ลงไปใน Payload
     const token = jwt.sign(
-      { 
+      {
         user_id: user.user_id,
         role: user.role,
         name: user.name,
         session_id: sessionId
       },
-      process.env.JWT_SECRET, 
+      process.env.JWT_SECRET,
       { expiresIn: '1d' }
     );
 
     // 3. อัปเดตสถานะ is_verified และ session_id ในตาราง Users
     await pool.query(
-        'UPDATE public."Users" SET is_verified = TRUE, session_id = $2 WHERE email = $1',
-        [email, sessionId]
+      'UPDATE public."Users" SET is_verified = TRUE, session_id = $2 WHERE email = $1',
+      [email, sessionId]
     );
 
     // ลบ OTP ทิ้งทันที (One-Time จริงๆ)
@@ -141,10 +133,12 @@ export const verifyOTP = async (req, res) => {
     res.json({
       message: 'เข้าสู่ระบบสำเร็จ',
       token, // ส่ง Token
-      user: { // ส่งข้อมูล User ให้ Frontend ไปแสดงผล
+      user: { 
         user_id: user.user_id,
+        title: user.title,
         name: user.name,
         surname: user.surname,
+        email: user.email,
         role: user.role
       }
     });
@@ -165,16 +159,16 @@ export const logout = async (req, res) => {
     const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
-      return res.status(200).json({ message: 'Logout สำเร็จ (ไม่มี Token)' }); 
+      return res.status(200).json({ message: 'Logout สำเร็จ (ไม่มี Token)' });
     }
 
     // ถอดรหัส Token เพื่อดูวันหมดอายุ (exp)
     // เราใช้ jwt.decode (ไม่ต้อง verify เพราะเราแค่อยากรู้วันหมดอายุ)
     const decoded = jwt.decode(token);
-    
+
     // ถ้า Token มั่ว หรือไม่มีวันหมดอายุ ก็ไม่ต้องทำอะไร
     if (!decoded || !decoded.exp) {
-        return res.status(200).json({ message: 'Logout สำเร็จ' });
+      return res.status(200).json({ message: 'Logout สำเร็จ' });
     }
 
     // แปลง exp (seconds) เป็น Date Object ของ Javascript
