@@ -1,5 +1,0 @@
-[2026-02-25 00:23:35] INFO: Booking Status Changed {"action_by_user_id":"b6630200578","target_booking_id":"01898e4c-325a-4867-b95e-a3d413fad186","new_status":"rejected","ip":"2001:44c8:4147:70cc:2937:f62f:ef08:f4ba"}
-[2026-02-25 00:23:37] INFO: Booking Status Changed {"action_by_user_id":"b6630200578","target_booking_id":"01898e4c-325a-4867-b95e-a3d413fad186","new_status":"rejected","ip":"2001:44c8:4147:70cc:2937:f62f:ef08:f4ba"}
-[2026-02-25 00:25:38] INFO: Booking Status Changed {"action_by_user_id":"b6630200578","target_booking_id":"01898e4c-325a-4867-b95e-a3d413fad185","new_status":"rejected","ip":"2001:44c8:4147:70cc:2937:f62f:ef08:f4ba"}
-[2026-02-25 00:36:01] INFO: Booking Status Changed {"action_by_user_id":"b6630200578","target_booking_id":"01898e4c-325a-4867-b95e-a3d413fad185","new_status":"approved","ip":"2001:44c8:4147:70cc:2937:f62f:ef08:f4ba"}
-[2026-02-25 00:39:12] INFO: Booking Status Changed {"action_by_user_id":"b6630200578","target_booking_id":"01898e4c-325a-4867-b95e-a3d413fad186","new_status":"approved","ip":"2001:44c8:4147:70cc:2937:f62f:ef08:f4ba"}

@@ -93,7 +93,7 @@ export const verifyOTP = async (req, res) => {
 
     // ดึงข้อมูล User
     const userResult = await pool.query(
-      'SELECT user_id, name, surname, role FROM public."Users" WHERE email = $1',
+      'SELECT user_id, name, surname, role, session_id FROM public."Users" WHERE email = $1',
       [email]
     );
 
@@ -102,26 +102,39 @@ export const verifyOTP = async (req, res) => {
     }
 
     const user = userResult.rows[0];
+    console.log("user = {}", user);
 
-    // สร้าง JWT Token 
-    // (แก้ไขชื่อ key ให้เป็น 'user_id' เพื่อให้ตรงกับ Middleware)
+    // Check if user is already logged in
+    if (user.session_id !== null) {
+        // แปลว่ามีคนใช้ Session นี้อยู่ก่อนแล้ว
+        return res.status(403).json({ 
+            message: 'บัญชีนี้ถูกเข้าสู่ระบบจากอุปกรณ์อื่นอยู่แล้ว กรุณาทำการออกจากระบบเครื่องเก่าก่อน',
+            code: 'ALREADY_LOGGED_IN'
+        });
+    }
+
+    // 1. สร้าง session_id ใหม่ (ใช้ crypto.randomBytes จะได้ string ความยาว 20 ตัวอักษร พอดีกับโครงสร้าง DB)
+    const sessionId = crypto.randomBytes(10).toString('hex');
+
+    // 2. สร้าง JWT Token โดยฝัง session_id ลงไปใน Payload
     const token = jwt.sign(
       { 
         user_id: user.user_id,
         role: user.role,
-        name: user.name // แถมชื่อไปด้วย Frontend จะได้ใช้ง่ายๆ
+        name: user.name,
+        session_id: sessionId
       },
       process.env.JWT_SECRET, 
-      { expiresIn: '1d' } // อายุ 1 วัน
+      { expiresIn: '1d' }
     );
 
-    // อัปเดตสถานะว่ายืนยันตัวตนแล้ว
+    // 3. อัปเดตสถานะ is_verified และ session_id ในตาราง Users
     await pool.query(
-        'UPDATE public."Users" SET is_verified = TRUE WHERE email = $1',
-        [email]
+        'UPDATE public."Users" SET is_verified = TRUE, session_id = $2 WHERE email = $1',
+        [email, sessionId]
     );
 
-    //  ลบ OTP ทิ้งทันที (One-Time จริงๆ)
+    // ลบ OTP ทิ้งทันที (One-Time จริงๆ)
     await pool.query('DELETE FROM public."OTP" WHERE email = $1', [email]);
 
     //  ส่ง Response กลับไป
@@ -175,7 +188,15 @@ export const logout = async (req, res) => {
       [token, expiresAt]
     );
 
-    res.json({ message: 'Logout สำเร็จ Token ถูกยกเลิกแล้ว' });
+    // ล้าง session_id ของผู้ใช้ออก (เฉพาะถ้า session_id ตรงกับใน Token) เพื่อเคลียร์ Single Active Session
+    if (decoded.user_id && decoded.session_id) {
+      await pool.query(
+        'UPDATE public."Users" SET session_id = NULL WHERE user_id = $1 AND session_id = $2',
+        [decoded.user_id, decoded.session_id]
+      );
+    }
+
+    res.json({ message: 'Logout สำเร็จ Token ถูกยกเลิกและเคลียร์ Session แล้ว' });
 
   } catch (error) {
     console.error('Logout Error:', error);

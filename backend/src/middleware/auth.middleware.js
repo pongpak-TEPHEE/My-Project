@@ -18,8 +18,9 @@ export const authenticateToken = async (req, res, next) => {
     const decodedTK = jwt.verify(token, process.env.JWT_SECRET);
 
     // เช็คว่า User คนนี้ยัง "มีตัวตน" และ "ใช้งานได้" อยู่หรือไม่
+    // และนำ session_id มาตรวจสอบด้วย (Single Active Session)
     const userCheck = await pool.query(
-      `SELECT is_active FROM public."Users" WHERE user_id = $1`,
+      `SELECT is_active, session_id FROM public."Users" WHERE user_id = $1`,
       [decodedTK.user_id]
     );
 
@@ -29,6 +30,15 @@ export const authenticateToken = async (req, res, next) => {
 
     if (userCheck.rows[0].is_active === false) {
       return res.status(403).json({ message: 'บัญชีของคุณถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่' });
+    }
+
+    // เช็ค Session ID ปัจจุบัน ว่าตรงกับใน Token หรือไม่
+    // ถ้าไม่ตรง หรือ เป็น null แสดงว่าเข้าสู่ระบบจากที่อื่น หรือ ออกจากระบบไปแล้ว
+    if (userCheck.rows[0].session_id !== decodedTK.session_id) {
+      return res.status(401).json({
+        message: 'มีการเข้าสู่ระบบจากอุปกรณ์อื่น ระบบได้ทำการออกจากระบบให้คุณอัตโนมัติ',
+        code: 'SESSION_SUPERSEDED' // ส่ง code พิเศษไปให้หน้าบ้านเช็ค
+      });
     }
 
     const secretKey = process.env.JWT_SECRET || 'your_secret_key';
@@ -50,13 +60,13 @@ export const authenticateToken = async (req, res, next) => {
     // ⚠️ หมายเหตุ: ข้อมูลใน decoded จะมาจากตอนที่เรา jwt.sign
     // จากโค้ด verifyOTP ก่อนหน้านี้ เราใช้ 'user_id' ดังนั้นเรียกใช้ต้อง req.user.user_id นะครับ
     req.user = decoded;
-    
+
     next();
 
   } catch (error) {
     // แยก Error ให้ชัดเจนขึ้นนิดนึง
     if (error.name === 'TokenExpiredError') {
-        return res.status(403).json({ message: 'Token หมดอายุแล้ว (Expired)' });
+      return res.status(403).json({ message: 'Token หมดอายุแล้ว (Expired)' });
     }
     return res.status(403).json({ message: 'Token ไม่ถูกต้อง (Invalid)' });
   }
@@ -76,13 +86,13 @@ export const authorizeRole = (...allowedRoles) => {
         method: req.method,
         ip: req.ip
       });
-        return res.status(401).json({ message: 'User not authenticated' });
+      return res.status(401).json({ message: 'User not authenticated' });
     }
 
     // เช็คว่า role ของ user นี้ อยู่ในรายการที่อนุญาตไหม
     if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ 
-        message: `Access Denied: Requires one of these roles: ${allowedRoles.join(', ')}` 
+      return res.status(403).json({
+        message: `Access Denied: Requires one of these roles: ${allowedRoles.join(', ')}`
       });
     }
 

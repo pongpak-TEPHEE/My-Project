@@ -1,6 +1,7 @@
 import express from 'express';
 import { requestOTP, verifyOTP, logout } from '../controllers/auth.controller.js';
 import { otpRateLimiter, loginRateLimiter } from '../middleware/rateLimiter.js';
+import {  authenticateToken } from '../middleware/auth.middleware.js'
 
 const router = express.Router();
 
