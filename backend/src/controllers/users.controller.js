@@ -193,8 +193,6 @@ export const deleteUser = async (req, res) => {
 // ใช้เพื่อ แก้ไขข้อมูล user
 export const editUser = async (req, res) => {
   const { user_id } = req.params;
-
-  // รับข้อมูลจาก Frontend
   const {
     title,
     name,
@@ -202,6 +200,11 @@ export const editUser = async (req, res) => {
     role,
     email
   } = req.body;
+
+  // ดักให้ต้องใส่เป็น mail @ku.th เท่านั้น
+  if (!email || !email.endsWith('@ku.th')) {
+    return res.status(400).json({ message: 'อนุญาตให้ใช้งานเฉพาะอีเมล @ku.th เท่านั้น' });
+  }
 
   const client = await pool.connect();
 

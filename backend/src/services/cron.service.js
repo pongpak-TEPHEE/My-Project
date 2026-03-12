@@ -3,7 +3,7 @@ import { pool } from '../config/db.js';
 
 export const startCleanupJob = () => {
 
-  // 1. ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
+  // ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
     console.log('🧹 Running OTP Cleanup Job...');
     try {
@@ -18,7 +18,7 @@ export const startCleanupJob = () => {
     }
   });
 
-  // 2. อัปเดตสถานะการจองที่ "เรียนเสร็จแล้ว" ให้เป็น 'completed' (รันทุกๆ 1 ชั่วโมง)
+  // อัปเดตสถานะการจองที่ "เรียนเสร็จแล้ว" ให้เป็น 'completed' (รันทุกชั่วโมง)
   // เหมาะสำหรับเช็คว่าห้องที่ใช้งานอยู่ หมดเวลาหรือยัง ถ้าหมดแล้วให้จบงาน
   cron.schedule('0 * * * *', async () => {
     console.log('🔄 Running Booking Status Update Job...');
@@ -43,7 +43,7 @@ export const startCleanupJob = () => {
     }
   });
 
-  // 3. ลบ Booking เก่าที่ผ่านไปแล้ว (รันทุกเที่ยงคืน 00:00 น.)
+  // ลบ Booking เก่าที่ผ่านไปแล้ว (รันทุกเที่ยงคืน 00:00 น.)
   cron.schedule('0 0 * * *', async () => {
     console.log('🧹 Running Booking Cleanup Job...');
     try {
@@ -65,7 +65,7 @@ export const startCleanupJob = () => {
     }
   });
 
-  // 4. ลบ Token เก่า (รันตอนตี 3 ทุกวัน)
+  // ลบ Token เก่า (รันตอนตี 3 ทุกวัน)
   cron.schedule('0 3 * * *', async () => {
     console.log('🧹 Running Token Blacklist Cleanup...');
     try {

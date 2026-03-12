@@ -1,24 +1,13 @@
--- CREATE TABLE IF NOT EXISTS public."Semesters" ( semester_id character varying NOT NULL PRIMARY KEY, year character varying NOT NULL, term smallint, start_date date, end_date date );
--- CREATE TABLE IF NOT EXISTS public."Rooms" ( room_id character varying NOT NULL PRIMARY KEY, room_type character varying, capacity integer, location character varying, room_characteristics character varying, repair boolean, is_active boolean );
--- CREATE TABLE IF NOT EXISTS public."Users" ( user_id character varying(20) NOT NULL PRIMARY KEY, title character varying(10), name character varying(50), surname character varying(50), role character varying(20), email character varying(50), created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP, is_verified boolean, is_active boolean );
--- CREATE TABLE IF NOT EXISTS public."OTP" ( request_id character varying NOT NULL PRIMARY KEY, email character varying, otp_code character varying, expired_at timestamp with time zone, created_at timestamp with time zone );
--- CREATE TABLE IF NOT EXISTS public."Equipment" ( equipment_id character varying NOT NULL PRIMARY KEY, room_id character varying NOT NULL REFERENCES public."Rooms"(room_id), computer integer, microphone integer, type_of_computer character varying, whiteboard integer, projector integer );
--- CREATE TABLE IF NOT EXISTS public."Schedules" ( schedule_id character varying NOT NULL PRIMARY KEY, room_id character varying NOT NULL REFERENCES public."Rooms"(room_id), subject_name character varying, teacher_name character varying, start_time time without time zone, end_time time without time zone, semester_id character varying REFERENCES public."Semesters"(semester_id), date date, temporarily_closed boolean, teacher_id character varying, teacher_surname character varying );
--- CREATE TABLE IF NOT EXISTS public."TokenBlacklist" ( token text NOT NULL PRIMARY KEY, expires_at timestamp without time zone NOT NULL );
--- CREATE TABLE IF NOT EXISTS public."Booking" ( booking_id character varying NOT NULL PRIMARY KEY, room_id character varying NOT NULL REFERENCES public."Rooms"(room_id), teacher_id character varying REFERENCES public."Users"(user_id), purpose character varying, date date, start_time time without time zone, end_time time without time zone, status character varying, approved_by character varying REFERENCES public."Users"(user_id) );
-
-
-
 --
 -- PostgreSQL database dump
 --
 
-\restrict WoB1vlX9UDoTQmeiNcVcG2VTkGYckwJEQpSMU530jMj3olakYjv4dbTAiEGK6za
+\restrict uuFwlr3VJgT2ayuFyMFsZRz6EHBYZgFDVynfcfHC67ytKp4gBt8bHZBTfKpdRxt
 
 -- Dumped from database version 17.7
 -- Dumped by pg_dump version 17.7
 
--- Started on 2026-02-24 01:01:47
+-- Started on 2026-03-12 14:16:07
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -173,7 +162,8 @@ CREATE TABLE public."Users" (
     email character varying(50),
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
     is_verified boolean,
-    is_active boolean
+    is_active boolean,
+    session_id character varying(20)
 );
 
 
@@ -189,10 +179,6 @@ COPY public."Booking" (booking_id, room_id, teacher_id, purpose, date, start_tim
 b0013	26504	b6630200403	555	2026-02-21	12:00:00	13:00:00	cancelled	\N
 b0006	26504	b0000000001	5555	2026-02-19	09:00:00	12:00:00	cancelled	b6630200578
 b0010	26504	b0000000004	5555	2026-02-24	22:50:00	23:50:00	cancelled	b6630200578
-b0014	26506	b6630200578	555	2026-02-19	22:00:00	22:30:00	approved	b6630200578
-b0015	26506	b6630200578	5555	2026-02-19	21:40:00	22:00:00	approved	b6630200578
-b0016	26506	b6630200578	456	2026-02-19	22:40:00	23:00:00	approved	b6630200578
-b0017	26506	b6630200578	852	2026-02-19	23:00:00	23:30:00	approved	b6630200578
 b0018	26504	b6630200578	55555	2026-02-23	13:00:00	16:00:00	cancelled	b6630200578
 b0019	26504	b6630200578	456	2026-02-23	13:00:00	16:00:00	cancelled	b6630200578
 b0004	26508	b0000000001	8888	2026-02-20	09:00:00	12:00:00	rejected	\N
@@ -200,19 +186,39 @@ b0020	26504	b6630200578	456	2026-02-23	13:00:00	16:00:00	cancelled	b6630200578
 b0002	26508	b0000000001	6666	2026-02-20	17:00:00	18:00:00	cancelled	\N
 b0007	26506	b0000000001	5555	2026-02-25	16:00:00	17:00:00	rejected	b6630200578
 b0003	26506	b0000000001	7777	2026-02-20	22:00:00	23:00:00	cancelled	\N
+5e9cdb3c-5d85-407f-bf54-c3cdc7722092	26504	b6630200578	5555	2026-02-26	15:00:00	16:00:00	cancelled	b6630200578
+01898e4c-325a-4867-b95e-a3d413fad186	26508	b6630200578	555	2026-02-28	12:00:00	12:30:00	completed	b6630200578
+b0014	26506	b6630200578	555	2026-02-19	22:00:00	22:30:00	completed	b6630200578
+b0015	26506	b6630200578	5555	2026-02-19	21:40:00	22:00:00	completed	b6630200578
+b0016	26506	b6630200578	456	2026-02-19	22:40:00	23:00:00	completed	b6630200578
 b0023	26504	b6630200578	555	2026-02-22	12:00:00	13:00:00	cancelled	b6630200578
 b0024	26508	b6630200578	5555	2026-02-22	12:00:00	13:00:00	cancelled	b6630200578
-a1a19685-9889-44ab-8e83-30185d41de06	26512	b6630200578	5555	2026-02-26	14:00:00	15:00:00	cancelled	\N
-b0001	26506	b0000000001	7777	2026-02-10	15:30:00	16:30:00	approved	\N
-b0008	26506	b0000000004	7777	2026-02-16	20:40:00	21:00:00	approved	\N
-01898e4c-325a-4867-b95e-a3d413fad185	26504	b6630200578	555	2026-02-26	17:00:00	18:00:00	cancelled	\N
+b0017	26506	b6630200578	852	2026-02-19	23:00:00	23:30:00	completed	b6630200578
+bc3fbd6b-0f21-4358-bc1a-081265242053	26504	b6630200403	สอนวิชา Web Dev	2026-03-02	09:00:00	12:00:00	completed	b6630200578
+bf060f45-f05e-4655-a17d-7444b5d78bf7	26504	b6630200578	556	2026-03-12	15:00:00	16:00:00	cancelled	\N
+b0001	26506	b0000000001	7777	2026-02-10	15:30:00	16:30:00	completed	\N
 b0021	26504	b6630200578	444	2026-03-03	12:00:00	13:00:00	cancelled	b6630200578
 b0022	26504	b6630200578	555	2026-02-24	09:00:00	18:00:00	cancelled	b6630200578
-b0025	26504	b6630200578	555	2026-02-22	22:20:00	22:50:00	approved	b6630200578
-b0005	26512	b0000000001	9999	2026-02-20	12:00:00	13:00:00	approved	b6630200578
-b0009	26506	b0000000004	7777	2026-02-22	21:00:00	22:00:00	approved	b6630200578
+b0008	26506	b0000000004	7777	2026-02-16	20:40:00	21:00:00	completed	\N
+b0025	26504	b6630200578	555	2026-02-22	22:20:00	22:50:00	completed	b6630200578
+b0005	26512	b0000000001	9999	2026-02-20	12:00:00	13:00:00	completed	b6630200578
+b0026	26504	b6630200578	555	2026-03-03	13:00:00	16:00:00	cancelled	b6630200578
+dfda64eb-1b3e-4ed1-bc48-e850d1e25bd8	26504	b6630200403	ธุระส่วนตัว	2026-03-07	13:00:00	15:30:00	cancelled	b6630200403
+b0009	26506	b0000000004	7777	2026-02-22	21:00:00	22:00:00	completed	b6630200578
+01898e4c-325a-4867-b95e-a3d413fad185	26504	b6630200578	555	2026-02-26	17:00:00	18:00:00	completed	b6630200578
+a1a19685-9889-44ab-8e83-30185d41de06	26512	b6630200578	5555	2026-02-26	14:00:00	15:00:00	cancelled	\N
+1b89b691-5294-464f-898c-0d711c42ca80	26504	b6630200403	ใช้งาน ทำกิจกรรมโรงเรียน	2026-03-06	20:10:00	03:21:00	cancelled	b6630200403
+89a2ee17-0b5b-4f56-b491-58c73a93ae04	26504	b6630200578	555	2026-03-13	17:07:00	18:09:00	cancelled	b6630200578
 b0011	26504	b6630200578	5555	2026-02-22	12:00:00	12:30:00	cancelled	\N
 b0012	150411	b6630200578	6666	2026-02-23	12:30:00	13:30:00	cancelled	b6630200578
+c00f0368-6d15-476c-8d29-76307419fb81	26504	b6630200578	5555	2026-03-14	17:50:00	18:50:00	cancelled	b6630200578
+80e85ebc-a1b6-487d-8eb9-c76c623d04dc	26504	b6630200578	5555	2026-03-13	15:00:00	17:00:00	cancelled	b6630200578
+dea93c87-07a3-4170-affa-4e9640d994fe	26504	b6630200578	000	2026-03-13	17:00:00	18:59:00	cancelled	b6630200578
+58d3ebb1-e5b8-40ab-b078-02c9caebc8b2	26504	b6630200578	555	2026-03-14	15:00:00	16:00:00	cancelled	b6630200578
+1c96442f-33f5-4b62-a2a3-76614bc6e399	กกก	b6630200578	555	2026-03-12	17:00:00	18:00:00	cancelled	b6630200578
+5cdad267-08a9-410a-835b-df4879a9948b	กกก	b6630200578	557	2026-03-10	15:00:00	16:00:00	cancelled	\N
+abc30adf-28d8-43a2-81f6-532119164646	26504	b6630200403	55555	2026-03-19	05:50:00	17:50:00	pending	\N
+880edf02-4901-4be6-8153-884cc9093816	26506	b6630200403	กหดำ	2026-03-17	08:51:00	12:51:00	pending	\N
 \.
 
 
@@ -226,6 +232,9 @@ COPY public."Equipment" (equipment_id, room_id, computer, microphone, type_of_co
 eq-26506	26506	50	2	VDI	1	1
 eq-26508	26508	50	1	VDI	1	1
 eq-26512	26512	50	2	VDI	1	1
+eq-กกก	กกก	0	0	-	0	0
+eq-150411	150411	0	0	-	0	0
+eq-231213	231213	1	1	-	1	1
 eq-150412	150412	50	1	PC	1	1
 eq-150413	150413	50	1	PC	1	1
 eq-150414	150414	50	1	PC	1	1
@@ -234,7 +243,6 @@ eq-SeniorProject	SeniorProject	0	0	PC	0	5
 eq-555	555	0	0	PC	0	0
 eq-5555	5555	6	6	VDI	6	6
 eq-456	456	0	0	-	0	0
-eq-150411	150411	0	0	-	0	0
 eq-26504	26504	45	20	-	1	1
 eq-150416	150416	0	0	-	0	0
 \.
@@ -247,7 +255,6 @@ eq-150416	150416	0	0	-	0	0
 --
 
 COPY public."OTP" (request_id, email, otp_code, expired_at, created_at) FROM stdin;
-94fa1591-280e-46c7-8262-2752ed8c60ad	pongpak.te@ku.th	238451	2026-02-23 20:00:45.916+07	2026-02-23 19:55:45.92508+07
 \.
 
 
@@ -261,7 +268,7 @@ COPY public."Rooms" (room_id, room_type, capacity, location, room_characteristic
 SeniorProject	Computer lab	45	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	f
 26504	Computer lab	50	 อาคาร 26 คณะวิทยาศาสตร์ ศรีราชา	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	f	t
 555	555	5555	อาคาร 26 คณะวิทยาศาสตร์ ศรีราชา	5555	t	f
-150411	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
+กกก	กกก2	0	อาคาร 26 คณะวิทยาศาสตร์ ศรีราชา		f	t
 150412	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
 150413	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
 26506	Computer lab	50	 อาคาร 26 คณะวิทยาศาสตร์ ศรีราชา	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	f	t
@@ -271,7 +278,9 @@ SeniorProject	Computer lab	45	 อาคาร 15 ปฏิบัติการ
 456		0	อาคาร 26 คณะวิทยาศาสตร์ ศรีราชา		t	f
 150414	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
 150415	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
+150411	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
 150416	Computer lab	50	 อาคาร 15 ปฏิบัติการวิทยาศาสตร์และเทคโนโลยี	สำหรับการเรียนการสอน และฝึกอบรมทางคอมพิวเตอร์เป็นหลัก	t	t
+231213	123dsf	3	อาคาร 26 คณะวิทยาศาสตร์ ศรีราชา	fsdfss	f	t
 \.
 
 
@@ -282,126 +291,126 @@ SeniorProject	Computer lab	45	 อาคาร 15 ปฏิบัติการ
 --
 
 COPY public."Schedules" (schedule_id, room_id, subject_name, teacher_name, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, teacher_surname) FROM stdin;
-ab500ab4-c2b5-4e8e-a687-f163c65b9f55	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-11-24	f	b0000000001	เจริญสุข
-f0242d59-7de2-44ff-ab17-3b31e9cb2129	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-01	f	b0000000001	เจริญสุข
-1f809b54-37be-41ff-b803-059017ad13ee	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-08	f	b0000000001	เจริญสุข
-3ab27bfc-5cc4-4274-b71a-a5cee6b8fcc6	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-15	f	b0000000001	เจริญสุข
-7193e555-e5d7-4865-923b-c5924f38bd3e	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-22	f	b0000000001	เจริญสุข
-9d987fa8-621d-4305-be14-23af3dcd9f70	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-29	f	b0000000001	เจริญสุข
-7f99e2a5-97d0-4d5e-870d-43db65fb8bad	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-05	f	b0000000001	เจริญสุข
-1114c4b2-6577-4ea5-87cb-aebb6a5c327b	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-12	f	b0000000001	เจริญสุข
-1bf670ca-4d90-4325-be41-177e133fdf33	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-19	f	b0000000001	เจริญสุข
-de9fd9e5-fdb9-41bb-80cc-ccd71418db88	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-26	f	b0000000001	เจริญสุข
-4626610a-5243-4ea7-9fb9-c950bf98a43f	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-09	f	b0000000001	เจริญสุข
-6a9dfa61-36a5-47e5-bac0-96fae2749bfd	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-16	f	b0000000001	เจริญสุข
-c95aa79e-1154-46da-899f-a5ef3a29fb27	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-23	f	b0000000001	เจริญสุข
-a0f76998-5e83-4b6e-adce-5da5db8e1a77	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-03-02	f	b0000000001	เจริญสุข
-fd689413-987f-47e2-8a5d-22ffc0e65685	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-11-25	f	b0000000005	คำประไพ
-bbc2d3e1-e945-456a-aa57-7b57e0a8a948	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-02	f	b0000000005	คำประไพ
-de706a5f-4566-4605-b434-275181754f8f	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-09	f	b0000000005	คำประไพ
-7340761d-9ff4-4650-b8cb-72e227178667	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-16	f	b0000000005	คำประไพ
-a046a971-fd73-4601-942f-58fe77d5db1b	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-23	f	b0000000005	คำประไพ
-0f1e20fe-1bab-42b3-824a-00f182bb0461	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-30	f	b0000000005	คำประไพ
-e8f3f314-27bf-4ab4-8325-f93c3b86e32d	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-06	f	b0000000005	คำประไพ
-2491278b-c9c4-4576-a721-535ded8dbce0	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-13	f	b0000000005	คำประไพ
-e92f35b7-bddc-40cb-8f69-0a09adef3298	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-20	f	b0000000005	คำประไพ
-b0e73ed6-9fd8-4820-a5fd-ad68b7172892	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-27	f	b0000000005	คำประไพ
-2f5fc8d6-ecbb-49fa-8cea-5f2cebb81ff1	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-03	f	b0000000005	คำประไพ
-6e5393e6-beaf-41f7-81f1-07976c2b952a	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-10	f	b0000000005	คำประไพ
-d393cb51-586f-4129-820d-8d57d7d90a4c	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-17	f	b0000000005	คำประไพ
-70ffa003-a449-463f-a7b8-d5e827bdaf21	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-24	f	b0000000005	คำประไพ
-d565aaf3-e11c-4caa-9a4b-9ab2aacdc31a	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-03-03	f	b0000000005	คำประไพ
-2972982e-8eb5-4752-afc2-462eec1cbff7	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-11-25	f	b0000000005	คำประไพ
-e9a05531-489c-4c4c-a700-97425a0833ba	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-02	f	b0000000005	คำประไพ
-2ea7b24d-e317-4d53-99f9-c5160febdcaa	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-09	f	b0000000005	คำประไพ
-aa20a0b1-8af7-4368-866c-0baa036f8059	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-16	f	b0000000005	คำประไพ
-f2f07cf7-22b8-4550-815b-f1c08cbc45c7	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-23	f	b0000000005	คำประไพ
-7a54062b-d133-4acc-8de7-a486a969d621	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-30	f	b0000000005	คำประไพ
-e570a53c-598f-478e-bb90-b29c474883e1	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-06	f	b0000000005	คำประไพ
-7141dc61-9f1f-4cfe-85cc-373a1e565724	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-13	f	b0000000005	คำประไพ
-a57d017f-36c1-41d5-abb1-1fefed0f9a30	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-20	f	b0000000005	คำประไพ
-095bc316-bad0-450f-8b3a-35f27f8b6364	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-27	f	b0000000005	คำประไพ
-5640445a-ab22-448c-83e9-00fc8cd85c8d	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-03	f	b0000000005	คำประไพ
-a2f4bbff-a590-431a-8052-7b17d018ef73	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-10	f	b0000000005	คำประไพ
-a9aac0f6-1ed3-4362-8ee5-8c764e129bb0	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-17	f	b0000000005	คำประไพ
-81d39c89-616e-436d-b579-15589531cd8d	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-24	f	b0000000005	คำประไพ
-5c876adc-2edd-4e3f-ade4-7e70a5d3f646	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-03-03	f	b0000000005	คำประไพ
-5e79d9b1-e1d6-410b-b702-20d1f454f04a	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-11-26	f	b0000000002	วัชนุภาพร
-1fc0d604-b926-4a9a-8657-f4e851d52b70	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-03	f	b0000000002	วัชนุภาพร
-2deea5e3-ad9d-4884-91ed-98eeab987744	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-10	f	b0000000002	วัชนุภาพร
-f826a600-279c-44c0-a9ad-e8417c01179f	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-17	f	b0000000002	วัชนุภาพร
-db402298-02ca-4892-9197-273c6393eee1	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-24	f	b0000000002	วัชนุภาพร
-d4b16759-a93f-48af-aa65-cc74457cb836	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-31	f	b0000000002	วัชนุภาพร
-1051a826-3f56-4138-a499-993a90f23e65	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-07	f	b0000000002	วัชนุภาพร
-79512ccc-4261-429d-a3b0-a4d02945ddf9	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-14	f	b0000000002	วัชนุภาพร
-85d00f5f-220a-4044-96b6-e69e2d583446	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-21	f	b0000000002	วัชนุภาพร
-f4f7907b-8951-4289-ba80-d5a7ece80a48	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-28	f	b0000000002	วัชนุภาพร
-53574a2b-7a21-4d31-8752-39f756599157	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-04	f	b0000000002	วัชนุภาพร
-56134733-39f7-464a-9341-883173ab8a2e	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-11	f	b0000000002	วัชนุภาพร
-7965bb2e-46d1-4f68-85b5-a02dbfcb5bfc	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-18	f	b0000000002	วัชนุภาพร
-9e764c40-8611-46b2-bf34-d9b235895baa	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-25	f	b0000000002	วัชนุภาพร
-76d2c3cf-40d3-4ed2-bae2-6538ea61a7e3	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-03-04	f	b0000000002	วัชนุภาพร
-89eda6b2-7b78-42ba-9c6e-0026430359b6	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-11-26	f	b0000000003	ชูทอง
-5df7a083-8748-4be3-b3fe-044d080b0f25	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-03	f	b0000000003	ชูทอง
-43f0adeb-c4dd-4f8f-aa14-c05869595046	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-10	f	b0000000003	ชูทอง
-1d8b0e19-5c92-4fc2-be3a-dfa913a92151	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-17	f	b0000000003	ชูทอง
-2ac10bb0-3dc8-44b2-a9d2-b9897981171d	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-24	f	b0000000003	ชูทอง
-cd8a76ad-5c0a-4c19-b0a0-2c2f9ddcb5b0	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-31	f	b0000000003	ชูทอง
-19b53af4-0990-4dd6-8713-160431f2e94b	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-07	f	b0000000003	ชูทอง
-b3beb844-359a-4a48-8255-3691ace85a8a	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-14	f	b0000000003	ชูทอง
-ea20a86f-5212-451f-9b5b-d4a463c28dc5	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-21	f	b0000000003	ชูทอง
-27a0d23c-0087-4107-8374-68ca61cec202	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-28	f	b0000000003	ชูทอง
-c1c78002-bfe2-4010-a401-821e476a4617	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-04	f	b0000000003	ชูทอง
-b5bf1f7e-1e50-4293-9e2b-a79e10ff8d3d	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-11	f	b0000000003	ชูทอง
-f547fec4-9623-42a1-a7ad-2d790384619a	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-18	f	b0000000003	ชูทอง
-e0dcb7b0-8fb8-4f2a-a020-f37cb13b92d2	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-25	f	b0000000003	ชูทอง
-aae7d5e3-69dd-4776-b097-56c1367bf424	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-03-04	f	b0000000003	ชูทอง
-2762f1a1-4c5a-4eda-bd2f-efba855605b0	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-11-26	f	b0000000004	เป็นศิริ
-2dddf0cf-2558-4e99-9f8c-cf0d7dac8f94	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-03	f	b0000000004	เป็นศิริ
-1f582bea-c514-4786-99c5-4ab3da0b6d7d	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-10	f	b0000000004	เป็นศิริ
-a554f960-507d-4efb-9f4e-5e6143d2f198	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-17	f	b0000000004	เป็นศิริ
-8ec932b9-c89c-4dee-a247-bf2144985117	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-24	f	b0000000004	เป็นศิริ
-50072ee3-359f-4e5c-89d3-cc066db1c9bc	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-31	f	b0000000004	เป็นศิริ
-d8efa133-70ce-4eeb-a0c8-9d08bc4e3ee1	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-07	f	b0000000004	เป็นศิริ
-3b3b0346-5b6d-4609-b40a-32e83d8162b1	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-14	f	b0000000004	เป็นศิริ
-9e6bc79c-7863-4fc0-baf5-f2aac15455f1	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-21	f	b0000000004	เป็นศิริ
-fddbb1ca-8126-4ad9-955a-d245466ed8f1	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-28	f	b0000000004	เป็นศิริ
-14f96de9-c50b-4626-8a13-373526874320	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-04	f	b0000000004	เป็นศิริ
-3e0f5900-6502-4639-ba8a-66e2f4dcf204	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-11	f	b0000000004	เป็นศิริ
-40e114b4-a1d4-46ad-926d-101a7056dc68	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-18	f	b0000000004	เป็นศิริ
-f2c9354b-9a12-4f04-aa96-9196dff599c9	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-25	f	b0000000004	เป็นศิริ
-f7aad2bf-9ee2-4266-86f1-fb3925ce1e69	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-03-04	f	b0000000004	เป็นศิริ
-77b231df-00c8-4973-aedd-b4700f7a751c	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-11-27	f	b0000000002	วัชนุภาพร
-a48bd123-6a51-47c4-91ab-5c5a472ce20d	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-04	f	b0000000002	วัชนุภาพร
-f5905632-ef97-45e2-8c71-9834c5a03abf	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-11	f	b0000000002	วัชนุภาพร
-89aeaf7b-71f9-45b9-be63-07a2348ad7e2	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-18	f	b0000000002	วัชนุภาพร
-2cf2330d-e5b4-46a3-afc8-8eef4ece76ea	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-25	f	b0000000002	วัชนุภาพร
-1e7dc64b-ae9c-464a-80f5-82e468894582	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-01	f	b0000000002	วัชนุภาพร
-60067cda-1d9e-4749-9a5e-10740f56c8e8	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-08	f	b0000000002	วัชนุภาพร
-f6c43d9d-c05c-409c-b07b-f17bcc798b81	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-15	f	b0000000002	วัชนุภาพร
-c4292c5b-6638-4df8-816f-20209446b824	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-22	f	b0000000002	วัชนุภาพร
-5d7be79f-039e-493e-a565-5e261263a958	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-29	f	b0000000002	วัชนุภาพร
-8f175689-d25f-4330-bd45-589e7756ef02	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-05	f	b0000000002	วัชนุภาพร
-82bc6c82-8cc8-4cfc-aa87-d70d9f7621bb	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-12	f	b0000000002	วัชนุภาพร
-001261ef-a0c6-4408-9b65-4a2f8fd6e9af	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-19	f	b0000000002	วัชนุภาพร
-46781c38-bd64-4588-9659-41f2d18be650	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-26	f	b0000000002	วัชนุภาพร
-6549c18d-61ea-4708-b855-7433f769a652	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-03-05	f	b0000000002	วัชนุภาพร
-628a55bb-0224-4d8c-8dd8-7b948ccc1b0d	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-11-27	f	b0000000004	เป็นศิริ
-433e9796-9a77-4b8b-aa66-fbde888cc008	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-04	f	b0000000004	เป็นศิริ
-a43afb62-2c04-4566-a2ef-dfb8ae1bbb59	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-11	f	b0000000004	เป็นศิริ
-4ba1e971-f8dd-4bbc-98f6-4bb7c883eb9f	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-18	f	b0000000004	เป็นศิริ
-3f304abd-f1f5-43a2-9e22-b6083b8339da	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-25	f	b0000000004	เป็นศิริ
-99b77cff-09c4-4dbb-be03-395e12362c77	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-01	f	b0000000004	เป็นศิริ
-a676aac9-3702-426f-9b6a-d381977a99f7	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-08	f	b0000000004	เป็นศิริ
-72b0cd27-3d02-4887-931e-844d32551e62	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-15	f	b0000000004	เป็นศิริ
-17339fdf-4bac-4c80-b34a-093f9027a9fe	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-22	f	b0000000004	เป็นศิริ
-5bba5f44-5f3d-4b41-834d-e34a752bf5e8	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-29	f	b0000000004	เป็นศิริ
-71e36160-7d00-4ebd-a1ad-3454e72c0d36	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-05	f	b0000000004	เป็นศิริ
-b32b20ef-5bf9-4f44-a82e-262e127cb5cc	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-12	f	b0000000004	เป็นศิริ
-cd794ce1-c04f-47c6-8f66-ead38711ee3b	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-19	f	b0000000004	เป็นศิริ
-ae3f20b9-4dd5-498b-aec6-ce26f5324a4a	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-26	f	b0000000004	เป็นศิริ
-90179833-9e10-41b1-bf6c-838d811a6b37	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-03-05	f	b0000000004	เป็นศิริ
-c6e6c289-9bab-4193-bbe4-e8f6b026f0d4	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-02	f	b0000000001	เจริญสุข
+ddc98f4f-bd8f-4e7f-aeee-560e72650595	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-11-24	f	b0000000001	เจริญสุข
+c1fd01d3-30a9-47e3-ab5e-3d439e3dbd23	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-01	f	b0000000001	เจริญสุข
+9efe413b-9fc7-404a-8369-abf927a0d1d0	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-08	f	b0000000001	เจริญสุข
+b98425cc-5f9c-442d-8096-19346f7a8291	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-15	f	b0000000001	เจริญสุข
+57a19284-9160-475a-a32b-6aa3ee968e50	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-22	f	b0000000001	เจริญสุข
+c7154f02-8186-4fd6-baa3-fd8c033b9f81	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2025-12-29	f	b0000000001	เจริญสุข
+9f6447c2-dbf6-4f96-80e3-6b9e321a3f5a	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-05	f	b0000000001	เจริญสุข
+4aa0089e-e230-4323-bca0-4e9574b60633	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-12	f	b0000000001	เจริญสุข
+45ee7773-9dd8-4a69-98e9-da43c5f9d141	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-19	f	b0000000001	เจริญสุข
+0a11d1c1-0460-4bfe-87c0-a6ba7ae9e637	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-01-26	f	b0000000001	เจริญสุข
+cec2d6d8-757e-4ad8-9181-3cb0010ab159	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-02	f	b0000000001	เจริญสุข
+a242f105-f4cd-4749-94cb-6bd4dfbaa47f	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-09	f	b0000000001	เจริญสุข
+c4f8911e-efa2-4867-ad33-4525cb68ea67	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-16	f	b0000000001	เจริญสุข
+94480c69-d6db-4c80-9dfe-b9be264faa47	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-02-23	f	b0000000001	เจริญสุข
+50862c25-7cfc-4d9e-ab5b-a309b78b6ac7	26504	Natural Language Processing	จิรวรรณ	13:00:00	16:00:00	2025/2	2026-03-02	f	b0000000001	เจริญสุข
+35fdd6d8-12f2-42b9-87dc-e7b1c117af20	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-11-25	f	b0000000005	คำประไพ
+6489ef59-5c0e-4ca7-b6fa-d87ec8ee25ce	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-02	f	b0000000005	คำประไพ
+0d3bfc90-74ad-4783-9708-cbb66178be48	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-09	f	b0000000005	คำประไพ
+7c4071fa-5fe9-440d-90fd-80c769c2e71c	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-16	f	b0000000005	คำประไพ
+2715881a-6e37-4658-9015-c1952c757378	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-23	f	b0000000005	คำประไพ
+b27f693f-d4de-43ab-a316-07e870cf808b	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2025-12-30	f	b0000000005	คำประไพ
+e46b49c1-2dbf-4965-95b1-e949efe2ef60	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-06	f	b0000000005	คำประไพ
+4ee8797c-7dae-424d-a098-ca99a347f19e	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-13	f	b0000000005	คำประไพ
+151e4b98-f316-4e95-8975-c4f0148f37ca	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-20	f	b0000000005	คำประไพ
+c3e2650e-8c87-442b-8a26-298a77e6dacd	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-01-27	f	b0000000005	คำประไพ
+b77c341b-3950-44d2-ae99-bf6e22954fcf	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-10	f	b0000000005	คำประไพ
+3c8239dd-a3ab-4e57-bf7b-0c71a87e19ed	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-17	f	b0000000005	คำประไพ
+dced45ea-de2b-44f9-a0ec-dd63bb96949f	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-24	f	b0000000005	คำประไพ
+bc500bf7-c355-4a2e-8dcb-3276c32dfde3	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-11-25	f	b0000000005	คำประไพ
+55bd73ca-b554-4b55-9e01-80a54bd2997d	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-02	f	b0000000005	คำประไพ
+752e8163-d219-49fb-8f6b-6a71f3458981	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-09	f	b0000000005	คำประไพ
+94c597a9-33f5-4361-8d6a-edb619a59517	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-16	f	b0000000005	คำประไพ
+06c0d0f7-47b0-4ce1-93e8-5f23d3c737a8	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-23	f	b0000000005	คำประไพ
+c1028309-a2d6-48a3-8ff7-4275986a2f96	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2025-12-30	f	b0000000005	คำประไพ
+fe63eb2b-9fa4-41fa-9123-2a3d22574d41	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-06	f	b0000000005	คำประไพ
+23790278-1029-4dc7-8307-1024a3e62c55	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-02-03	t	b0000000005	คำประไพ
+bd8c2ada-3e88-4c23-add6-0a165662f984	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-13	f	b0000000005	คำประไพ
+2c3c3782-8fb0-4e8e-9609-41e989179a24	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-20	f	b0000000005	คำประไพ
+e1a44857-8bf6-4307-baa4-3635c12ef6fd	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-01-27	f	b0000000005	คำประไพ
+81b5d42a-c09a-4175-92b3-64990a239426	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-03	f	b0000000005	คำประไพ
+99f0189f-98b0-4673-b44d-bf5464c77b7e	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-10	f	b0000000005	คำประไพ
+1845bd45-7924-4b77-9cda-600274debb90	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-17	f	b0000000005	คำประไพ
+efb78dfc-f8d7-4c4f-ad38-77bfb7e5fd9e	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-02-24	f	b0000000005	คำประไพ
+482fad5b-0f12-489e-916f-2fff34ba9c57	26506	Mobile Application Design and Development (ปฎิบัติ)	วนิดา	15:00:00	17:00:00	2025/2	2026-03-03	f	b0000000005	คำประไพ
+41465c47-36bd-4651-9cd5-ba0682e96a82	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-11-26	f	b0000000002	วัชนุภาพร
+7113c1b5-8464-4406-b809-dc49969ad7b3	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-03	f	b0000000002	วัชนุภาพร
+83332efb-8bf1-444e-bc39-b1d1912c6bc8	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-10	f	b0000000002	วัชนุภาพร
+c699043e-d301-4d73-9259-d29ef2f5e5d9	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-17	f	b0000000002	วัชนุภาพร
+845beace-5c78-403e-8109-917532107ae2	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-24	f	b0000000002	วัชนุภาพร
+53f51e4f-9a94-4cec-a52a-9e3150645705	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2025-12-31	f	b0000000002	วัชนุภาพร
+fc94f2e6-2a14-47cd-89c7-a4807f9591cd	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-07	f	b0000000002	วัชนุภาพร
+ff0c4345-7a11-4762-91e4-8d19ecfbed08	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-14	f	b0000000002	วัชนุภาพร
+dd0ae181-8801-418d-9308-48b338e1c0fa	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-21	f	b0000000002	วัชนุภาพร
+1a03d462-a36f-4886-94d0-e7fce1353bb2	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-01-28	f	b0000000002	วัชนุภาพร
+b98a2abd-eac3-4ecb-8e9d-346e7f677d03	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-04	f	b0000000002	วัชนุภาพร
+e912bf74-6601-4901-8b44-48f772c260d6	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-11	f	b0000000002	วัชนุภาพร
+b31afe28-5d69-41be-98c1-e44b4b253fb7	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-18	f	b0000000002	วัชนุภาพร
+fc22789c-08a3-4cc5-b4c9-a028ccd0f1ab	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-02-25	f	b0000000002	วัชนุภาพร
+f7d49c15-914c-4a5e-8aeb-3ca681f8f183	26504	Theory of Computation	อรวรรณ	13:00:00	16:00:00	2025/2	2026-03-04	f	b0000000002	วัชนุภาพร
+da084358-2f6b-4ae9-bbb8-067bacf722de	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-11-26	f	b0000000003	ชูทอง
+49f099bc-4490-420c-af59-ee8f6f66573e	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-03	f	b0000000003	ชูทอง
+0eefe0fe-fbd7-4dc3-91e1-0b453f7818f6	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-10	f	b0000000003	ชูทอง
+fe9e8474-eac1-4cad-af2f-e9098651d280	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-17	f	b0000000003	ชูทอง
+bc4346d8-33b2-4124-8a1e-ff4db456e930	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-24	f	b0000000003	ชูทอง
+8aaeade2-b469-4a58-9389-f82fee5769f9	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2026-12-31	f	b0000000003	ชูทอง
+eb16920a-2702-408e-9f8f-d1fe1674c8ce	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-07	f	b0000000003	ชูทอง
+e8f0b07f-96af-4c6b-bd82-989e62f8a555	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-14	f	b0000000003	ชูทอง
+4e5516aa-5400-4ea1-bd79-5343fd9e74e2	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-21	f	b0000000003	ชูทอง
+a18c6733-23c6-4e58-afa4-e59d282b41ac	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-01-28	f	b0000000003	ชูทอง
+4ab8ffae-f814-4fb8-a6af-64bed8d39d51	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-04	f	b0000000003	ชูทอง
+bf076a9f-2621-4693-9a54-5a7598727e21	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-11	f	b0000000003	ชูทอง
+a996de60-cc51-4a0e-a458-786e9b5d5307	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-18	f	b0000000003	ชูทอง
+fb31f5df-8f85-4999-9a72-f01d912a2b59	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-02-25	f	b0000000003	ชูทอง
+0ad3a7c5-b8e9-4b4b-8db5-1cfd02ef1957	26504	Cooperative Education Preparation	ชโลธร	08:30:00	10:30:00	2025/2	2027-03-04	f	b0000000003	ชูทอง
+ac876d07-6d43-41ac-88df-63b51a38683f	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-11-26	f	b0000000004	เป็นศิริ
+71fa458c-6fa3-4c80-8822-6196dbda0099	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-03	f	b0000000004	เป็นศิริ
+42f39f7b-20b0-44b2-b89d-029e79896e7b	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-10	f	b0000000004	เป็นศิริ
+e177e8b9-5afc-4425-9d92-25ea388855e2	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-17	f	b0000000004	เป็นศิริ
+30c801da-df49-4ccc-8c6c-177fa4075e98	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-24	f	b0000000004	เป็นศิริ
+c818ce74-71bf-4c85-85d3-cdb24b20381c	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2026-12-31	f	b0000000004	เป็นศิริ
+847f6f76-9044-401d-ae17-2eb65e3c153d	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-07	f	b0000000004	เป็นศิริ
+09920433-84ef-434f-832e-53328bb00427	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-14	f	b0000000004	เป็นศิริ
+d6dd59b1-b2f0-401a-b609-0bc80de4a830	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-21	f	b0000000004	เป็นศิริ
+e562d80b-f36a-4ff0-b2cd-29031682ef51	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-01-28	f	b0000000004	เป็นศิริ
+03cd9cbe-8b70-44be-8497-e04d7cdf9010	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-04	f	b0000000004	เป็นศิริ
+d08fc717-1198-4cd4-9b92-94f73a6539e8	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-11	f	b0000000004	เป็นศิริ
+fe2fe1b2-e41a-4407-98f6-939ee6070e8b	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-18	f	b0000000004	เป็นศิริ
+4ccfb2c7-9bf6-4d7c-b7a8-4d8f241035f0	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-02-25	f	b0000000004	เป็นศิริ
+0115592b-19af-4547-91f5-2c4f761c530c	26512	Information System Security	เฟื่องฟ้า	13:00:00	16:00:00	2025/2	2027-03-04	f	b0000000004	เป็นศิริ
+424efae8-2c67-47c5-85d6-97f373ea7989	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-11-27	f	b0000000002	วัชนุภาพร
+f2444360-4d9f-4f30-b7bc-118530e42187	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-04	f	b0000000002	วัชนุภาพร
+4a1f23d2-a55b-4cbf-986f-e0f528280f80	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-11	f	b0000000002	วัชนุภาพร
+f04358bf-992d-4bb3-9f95-19f412457739	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-18	f	b0000000002	วัชนุภาพร
+d617db9e-caba-4429-8fea-db8eef794cd3	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2026-12-25	f	b0000000002	วัชนุภาพร
+62631177-1fc5-4f62-8a90-ae1698f7ff6a	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-01	f	b0000000002	วัชนุภาพร
+0d06fdef-f919-4017-a087-96a809055149	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-08	f	b0000000002	วัชนุภาพร
+d49d6c58-8897-4c44-8693-7c9d97137de5	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-15	f	b0000000002	วัชนุภาพร
+4051eecf-0b57-4f73-9c74-0aef4b5475a5	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-22	f	b0000000002	วัชนุภาพร
+2af2f23f-f4cd-4a82-b2e2-3c725232e464	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-01-29	f	b0000000002	วัชนุภาพร
+bea5ec74-af2b-4ff5-9e74-da6cc8104fba	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-05	f	b0000000002	วัชนุภาพร
+adb728be-dd84-4772-aa8b-a77ebf96e4ec	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-12	f	b0000000002	วัชนุภาพร
+0734ce8d-dea5-44a5-9538-137f6f994d8f	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-19	f	b0000000002	วัชนุภาพร
+15ff123d-88fe-4619-9ae4-a0e825e4ce5e	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-02-26	f	b0000000002	วัชนุภาพร
+c22c9d9c-0751-4042-b7d3-6fdea2d434c6	26508	Web Technology and Web Services (บรรยาย)	อรวรรณ	08:30:00	10:30:00	2025/2	2027-03-05	f	b0000000002	วัชนุภาพร
+7cb66186-7447-45cc-aa69-07768f637977	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-11-27	f	b0000000004	เป็นศิริ
+04697a2d-ecdc-492f-9651-821ee1812156	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-04	f	b0000000004	เป็นศิริ
+df14dbca-7a52-4a0b-bf8d-e5958cac5a29	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-11	f	b0000000004	เป็นศิริ
+4317f67a-c4b7-4452-886b-d59cdee49d85	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-18	f	b0000000004	เป็นศิริ
+1e35df8d-bccc-4f77-9df7-579d9d328d32	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2026-12-25	f	b0000000004	เป็นศิริ
+a80172ab-148a-4c73-a1a3-1504f991cd31	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-01	f	b0000000004	เป็นศิริ
+0a9395f0-e626-4706-b820-fe99ec31284b	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-08	f	b0000000004	เป็นศิริ
+89490e76-1683-437a-9865-5c123e464449	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-15	f	b0000000004	เป็นศิริ
+7ea1a909-2034-4f94-b635-c255844b8265	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-22	f	b0000000004	เป็นศิริ
+d47069d8-a5f4-4e06-8f13-b1b74d6e6e13	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-01-29	f	b0000000004	เป็นศิริ
+99260134-ca8a-4a84-8e90-57190d5408ee	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-05	f	b0000000004	เป็นศิริ
+3cfed4c1-4469-44e8-b07e-f34861cceda8	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-12	f	b0000000004	เป็นศิริ
+f059541e-18cf-4ad7-a044-7021961dac21	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-19	f	b0000000004	เป็นศิริ
+ad2959c9-9390-49e4-b7ef-d99717d37fc9	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-02-26	f	b0000000004	เป็นศิริ
+05d92a11-9044-4650-b9fb-d9b29c99ed57	26508	Web Technology and Web Services (ปฎิบัติ)	เฟื่องฟ้า	10:30:00	12:00:00	2025/2	2027-03-05	f	b0000000004	เป็นศิริ
+9ea89497-56dd-4c75-b6e0-4d86333ebb3c	26506	Mobile Application Design and Development (บรรยาย)	วนิดา	13:00:00	15:00:00	2025/2	2026-03-03	f	b0000000005	คำประไพ
 \.
 
 
@@ -433,15 +442,17 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYjY2MzAyMDA1NzgiLCJyb2xlIjo
 -- Data for Name: Users; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public."Users" (user_id, title, name, surname, role, email, created_at, is_verified, is_active) FROM stdin;
-b0000000002	นาง	อรวรรณ	วัชนุภาพร	teacher	pongpak.te@gmail.com	2026-02-14 15:47:02.646935	t	t
-b0000000003	นาง	ชโลธร	ชูทอง	teacher	pongpak.te@gmail.com	2026-02-14 15:47:49.66541	t	t
-b0000000004	นาง	เฟื่องฟ้า	เป็นศิริ	teacher	pongpak.te@gmail.com	2026-02-14 15:49:35.888173	t	t
-b0000000005	นาง	วนิดา	คำประไพ	teacher	pongpak.te@gmail.com	2026-02-14 20:04:56.336633	t	t
-b0000000001	นาง	จิรวรรณ	เจริญสุข	teacher	pongpak.te@gmail.com	2026-02-14 15:46:14.671934	f	t
-T001	นาย	ศรีสมชัย	ภารี	teacher	Te.te@ku.th	2026-02-22 20:19:48.168474	f	t
-b6630200578	นาย	Supakrit	Seekum	staff	supakrit.se@ku.th	2026-01-25 11:48:40.585447	t	t
-b6630200403	นาย	Pongpak	Tepee	staff	pongpak.te@ku.th	2026-01-25 11:48:40.585447	t	t
+COPY public."Users" (user_id, title, name, surname, role, email, created_at, is_verified, is_active, session_id) FROM stdin;
+b0000000004	นาง	เฟื่องฟ้า	เป็นศิริ	teacher	pongpak.te@gmail.com	2026-02-14 15:49:35.888173	t	t	\N
+b0000000005	นาง	วนิดา	คำประไพ	teacher	pongpak.te@gmail.com	2026-02-14 20:04:56.336633	t	t	\N
+b0000000002	นาง	อรวรรณ	วัชนุภาพร	teacher	pongpak.te@gmail.com	2026-02-14 15:47:02.646935	t	f	\N
+b0000000003	นาง	ชโลธร	ชูทอง	teacher	pongpak.te@gmail.com	2026-02-14 15:47:49.66541	f	t	\N
+t009	นาง	df	ddsf	teacher	sdf@ku.th	2026-03-11 22:15:38.97494	f	t	\N
+ไๆฟำๆไ	นาง	ำๆไำ	ๆไำๆไ	teacher	shjdflijs@ku.th	2026-03-11 22:20:28.987814	f	t	\N
+b0000000001	นาง	จิรวรรณ	เจริญสุข	teacher	pongpak.te@gmail.com	2026-02-14 15:46:14.671934	f	t	\N
+sdfsd	นาย	fsdf	sdfsd	teacher	fsdfsdW@ku.th	2026-03-11 22:20:57.309452	f	t	\N
+b6630200403	นาย	Pongpak	Tepee	staff	pongpak.te@ku.th	2026-01-25 11:48:40.585447	t	t	39e3c7b4be040d83c47e
+b6630200578	นาย	Supakrit	Seekum	staff	supakrit.se@ku.th	2026-01-25 11:48:40.585447	t	t	1501719acc8c68e50efb
 \.
 
 
@@ -668,11 +679,11 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,USAGE O
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT,INSERT,DELETE,UPDATE ON TABLES TO project_app;
 
 
--- Completed on 2026-02-24 01:01:47
+-- Completed on 2026-03-12 14:16:07
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WoB1vlX9UDoTQmeiNcVcG2VTkGYckwJEQpSMU530jMj3olakYjv4dbTAiEGK6za
+\unrestrict uuFwlr3VJgT2ayuFyMFsZRz6EHBYZgFDVynfcfHC67ytKp4gBt8bHZBTfKpdRxt
 
