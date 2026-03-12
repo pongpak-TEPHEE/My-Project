@@ -7,7 +7,7 @@ import { sendScheduleBookingCancelledEmail } from '../services/mailer.js';
 const formatExcelData = (value, type = 'time') => {
   if (!value) return null;
 
-  // 🟢 กรณี 1: ExcelJS อ่านมาเป็น Date Object
+  // กรณี 1: ExcelJS อ่านมาเป็น Date Object
   if (value instanceof Date) {
     // แก้ไข: ใช้ getUTC...() แทน get...() 
     // เพื่อดึงค่าเวลาดิบๆ โดยไม่สน Timezone ของประเทศไทยในปี 1899
@@ -28,7 +28,7 @@ const formatExcelData = (value, type = 'time') => {
     }
   }
 
-  // 🟡 กรณี 2: มาเป็นตัวเลขทศนิยม (Logic เดิม)
+  // กรณี 2: มาเป็นตัวเลขทศนิยม (Logic เดิม)
   if (typeof value === 'number' && type === 'time') {
     // ปัดเศษวินาทีเพื่อความแม่นยำ (กันกรณี 09:00 กลายเป็น 08:59:59.999)
     const totalSeconds = Math.round(value * 24 * 60 * 60);
@@ -42,7 +42,7 @@ const formatExcelData = (value, type = 'time') => {
     return `${hh}:${mm}:${ss}`;
   }
 
-  // 🔴 กรณี 3: มาเป็น String
+  // กรณี 3: มาเป็น String
   return String(value).trim();
 };
 

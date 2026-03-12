@@ -115,7 +115,7 @@ export const deleteUser = async (req, res) => {
     await client.query('BEGIN');
 
     // ตรวจสอบประวัติการใช้งาน (Check Dependencies)
-    
+
     // เช็คว่าเคยมีการจองห้องหรือไม่? (เช็คจาก teacher_id)
     const checkBooking = await client.query(
       `SELECT 1 FROM public."Booking" WHERE teacher_id = $1 LIMIT 1`,
@@ -131,6 +131,7 @@ export const deleteUser = async (req, res) => {
     const hasHistory = (checkBooking.rowCount > 0 || checkSchedule.rowCount > 0);
     // ตัดสินใจว่าจะลบแบบไหน? ------------------
 
+    // กรณี A: "ไม่มีประวัติการใช้งาน" -> ลบถาวร (Hard Delete)
     if (!hasHistory) {
       
       const deleteResult = await client.query(
@@ -197,7 +198,6 @@ export const editUser = async (req, res) => {
     title,
     name,
     surname,
-    role,
     email
   } = req.body;
 
@@ -217,7 +217,6 @@ export const editUser = async (req, res) => {
        SET title = $1, 
            name = $2, 
            surname = $3, 
-           role = $4,
            email = $5,
            is_verified = $6,
            is_active = $7
@@ -226,7 +225,6 @@ export const editUser = async (req, res) => {
         title, 
         name, 
         surname, 
-        role, 
         email, 
         false,
         true,
