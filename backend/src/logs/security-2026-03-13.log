@@ -1,0 +1,2 @@
+[2026-03-13 12:55:05] INFO: Booking Status Changed {"action_by_user_id":"b6630200403","target_booking_id":"aa08f026-427f-4e2f-8cac-c5c5e85ca730","new_status":"approved","ip":"1.47.138.20"}
+[2026-03-13 14:14:06] INFO: Booking Status Changed {"action_by_user_id":"b6630200403","target_booking_id":"0ae62e2a-90fe-43e5-a7e4-d3abf8538f38","new_status":"approved","ip":"1.47.138.20"}

@@ -7,11 +7,11 @@ services:
     container_name: booking_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: iohdjfgoidsffoi09332jksdfmsdqpj4894914757dufgkjg
+      POSTGRES_USER: project_app
+      POSTGRES_PASSWORD: 1234
       POSTGRES_DB: kusrc_sci_book_rooms
     ports:
-       - "5433:5432"
+       - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db-init/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -25,7 +25,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://postgres:iohdjfgoidsffoi09332jksdfmsdqpj4894914757dufgkjg@db:5432/kusrc_sci_book_rooms
+      - DATABASE_URL=postgresql://dev:1234@localhost:5432/kusrc_sci_book_rooms
       - PORT=3000
       - JWT_SECRET=ihsluuslenbvedlislci65fdUHAL989sdgouuhodsfhgohdflkjenigs34573945dhfgihdnskjfgng
       - EMAIL_USER=pongpak.te@ku.th
@@ -34,3 +34,6 @@ services:
       - db
 volumes:
   pgdata:
+
+# รัน สร้าง container
+# docker-compose up --build

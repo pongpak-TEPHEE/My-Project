@@ -46,9 +46,9 @@
             "hash": "f46c474abdd37eed528fb6562fd034028fd7e19ff945e9d5a41fd007135c622a"
         },
         {
-            "date": 1773333242280,
-            "name": "logs/security-2026-03-12.log",
-            "hash": "8250a376be3dd985fb05e6f624a202544dd77dc730112eb2b8b69718c1389dbc"
+            "date": 1773380796918,
+            "name": "logs/security-2026-03-13.log",
+            "hash": "18834e5d9425cd68d3d0df5ba07a01364cb5845a84df2fb3d46bf5056661e8bd"
         }
     ],
     "hashType": "sha256"

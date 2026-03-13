@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'; // โมดูลสำหรับสร้า
 import crypto from 'crypto'; // โมดูลสำหรับสร้างตัวเลขสุ่มและ UUID ของ Node.js
 import { sendOTPEmail } from '../services/mailer.js';
 
+
 // /auth/request-otp
 // ขอ OTP ส่งไปยัง email.ku.th
 export const requestOTP = async (req, res) => {
@@ -14,7 +15,7 @@ export const requestOTP = async (req, res) => {
   }
 
   try {
-    // เช็คก่อนว่าเพิ่งขอไปหรือเปล่า (Cooldown)
+    // เช็คก่อนว่าเพิ่งขอไปหรือเปล่า ( Cooldown )
     const lastOtpCheck = await pool.query(
       `SELECT created_at FROM public."OTP"
        WHERE email = $1
@@ -56,7 +57,7 @@ export const requestOTP = async (req, res) => {
       [requestId, email, otp, expiresAt]
     );
 
-    // 7. ส่งอีเมล
+    // ส่งอีเมล
     const isSent = await sendOTPEmail(email, otp);
     if (!isSent) {
       // ถ้าส่งไม่ผ่าน ให้แจ้ง Error กลับไปเลย
@@ -73,6 +74,7 @@ export const requestOTP = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์' });
   }
 };
+
 
 // /auth/verify-otp
 // รับ OTP ที่ USER กรอกมาเพื่อ recheck กับ database
@@ -105,10 +107,10 @@ export const verifyOTP = async (req, res) => {
     console.log("user = {}", user);
 
 
-    // 1. สร้าง session_id ใหม่ (ใช้ crypto.randomBytes จะได้ string ความยาว 20 ตัวอักษร พอดีกับโครงสร้าง DB)
+    // สร้าง session_id ใหม่ (ใช้ crypto.randomBytes จะได้ string ความยาว 20 ตัวอักษร พอดีกับโครงสร้าง DB)
     const sessionId = crypto.randomBytes(10).toString('hex');
 
-    // 2. สร้าง JWT Token โดยฝัง session_id ลงไปใน Payload
+    // สร้าง JWT Token โดยฝัง session_id ลงไปใน Payload
     const token = jwt.sign(
       {
         user_id: user.user_id,
@@ -120,7 +122,7 @@ export const verifyOTP = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    // 3. อัปเดตสถานะ is_verified และ session_id ในตาราง Users
+    // อัปเดตสถานะ is_verified และ session_id ในตาราง Users
     await pool.query(
       'UPDATE public."Users" SET is_verified = TRUE, session_id = $2 WHERE email = $1',
       [email, sessionId]
