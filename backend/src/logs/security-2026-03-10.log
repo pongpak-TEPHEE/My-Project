@@ -1,1 +1,0 @@
-[2026-03-10 21:19:31] WARN: OTP Request Rate Limit Exceeded (Potential Email Spam) {"ip":"2001:44c8:4518:e57b:1c35:ffee:348d:1a1","attempted_email":"supakrit.se@ku.th","path":"/auth/request-otp"}

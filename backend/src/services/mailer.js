@@ -136,7 +136,6 @@ export const sendScheduleBookingCancelledEmail = async (toEmail, userName, roomI
     }
 };
 
-
 // ฟังก์ชันสำหรับส่งอีเมลเมื่อ Staff เป็นคนกดยกเลิกการจอง
 export const sendBookingCancelledEmail = async (toEmail, userName, roomId, date, timeSlot, cancelReason) => {
     try {
@@ -188,3 +187,56 @@ export const sendBookingCancelledEmail = async (toEmail, userName, roomId, date,
         return false;
     }
 };
+
+// ฟังก์ชันสำหรับส่งอีเมลเมื่อ teacher กดงดใช้ห้องไปหา staff ทุกคน
+export const sendTeacherCancelledRoomEmailToStaff = async (staffEmails, teacherName, roomId, date, timeSlot, cancelReason) => {
+    try {
+        // ถ้าไม่ได้ระบุเหตุผลมา ให้ใช้ข้อความมาตรฐาน
+        const reasonText = cancelReason ? cancelReason : 'ไม่ได้ระบุเหตุผล';
+
+        const mailOptions = {
+            from: `"ระบบจองห้อง" <${process.env.EMAIL_USER}>`,
+            to: staffEmails, // 💡 สามารถรับค่าเป็น String (อีเมลเดียว) หรือ Array ของอีเมล Staff หลายคนก็ได้
+            subject: `[แจ้งเตือน] อาจารย์ ${teacherName} งดใช้ห้อง ${roomId} ในวันที่ ${date}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+                    <div style="background-color: #f39c12; padding: 15px; text-align: center;">
+                        <h2 style="color: white; margin: 0;">แจ้งเตือน: อาจารย์งดใช้ห้อง</h2>
+                    </div>
+                    <div style="padding: 20px;">
+                        <p>เรียน <strong>เจ้าหน้าที่ / ทีมงานผู้ดูแลระบบ</strong>,</p>
+                        <p>ระบบขอแจ้งให้ทราบว่า อาจารย์ <strong>${teacherName}</strong> ได้ทำการ <strong>งดใช้ห้อง/ยกเลิกการจอง</strong> โดยมีรายละเอียดดังต่อไปนี้:</p>
+                        
+                        <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #f39c12; margin: 20px 0;">
+                            <h3 style="margin-top: 0; color: #d68910;">รายละเอียดการงดใช้ห้อง:</h3>
+                            <ul style="list-style-type: none; padding-left: 0;">
+                                <li><strong>อาจารย์ผู้จอง:</strong> ${teacherName}</li>
+                                <li><strong>ห้อง:</strong> ${roomId}</li>
+                                <li><strong>วันที่:</strong> ${date}</li>
+                                <li><strong>เวลา:</strong> ${timeSlot}</li>
+                                <li><strong>เหตุผลการงดใช้ห้อง:</strong> <span style="color: #d68910;">${reasonText}</span></li>
+                            </ul>
+                        </div>
+                        
+                        <p>กรุณาตรวจสอบข้อมูลในระบบ เพื่อให้ห้องว่างและพร้อมสำหรับการใช้งานหรือการจองในคิวถัดไปครับ</p>
+                        <br/>
+                        <p style="margin-bottom: 0;">ขอแสดงความนับถือ,</p>
+                        <p style="margin-top: 5px;"><strong>ระบบจองห้องอัตโนมัติ</strong></p>
+                    </div>
+                    <div style="background-color: #f1f1f1; padding: 10px; text-align: center; font-size: 12px; color: #777;">
+                        <p>อีเมลฉบับนี้เป็นการแจ้งเตือนจากระบบอัตโนมัติ กรุณาอย่าตอบกลับอีเมลนี้</p>
+                    </div>
+                </div>
+            `
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`✅ ส่งอีเมลแจ้ง Staff เรื่องอาจารย์งดใช้ห้องสำเร็จ! [Message ID: ${info.messageId}]`);
+        return true;
+
+    } catch (error) {
+        console.error(`❌ เกิดข้อผิดพลาดในการส่งอีเมลแจ้ง Staff:`, error);
+        return false;
+    }
+};
+

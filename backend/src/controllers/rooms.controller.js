@@ -103,7 +103,6 @@ export const getRoomScheduleToday = async (req, res) => {
   }
 };
 
-// !!!!!!!!!!!!!!!!!!! ต้องปรับใหม่ คือแบ่งการแสดงผลออกเป็น สองส่วนคือ ส่วน staff จะเห็นทุกห้องรวมถึงห้องที่งดให้บริการด้วย ส่วน teacher, studen จะรับรู้แค่ห้องที่เปิดให้บริการเท่านั้น
 // /rooms/
 // ดึงรายชื่อห้องทั้งหมด (สำหรับแสดงในหน้าเลือกห้อง)
 export const getAllRoom = async (req, res) => {
@@ -559,10 +558,9 @@ export const getRoomQRCodeURL = async (req, res) => {
   }
 };
 
-
+// POST /rooms/search
 export const findAvailableRooms = async (req, res) => {
   // รับค่า Date, Start, End, Capacity Body
-  // POST /rooms/search
   const { date, start_time, end_time, capacity } = req.body;
 
   // Validation เบื้องต้น
@@ -570,8 +568,26 @@ export const findAvailableRooms = async (req, res) => {
     return res.status(400).json({ message: 'กรุณาระบุวันที่, เวลาเริ่ม และเวลาสิ้นสุด' });
   }
 
-  if (start_time >= end_time) {
+  if (start_time > end_time) {
     return res.status(400).json({ message: 'เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด' });
+  }
+
+
+  // 🕒 ดักข้อมูลวันที่และเวลาย้อนหลัง
+  const now = new Date();
+  
+  // นำวันที่และเวลามาต่อกันให้อยู่ในรูปแบบ Date Object (เช่น 2026-03-13T09:00:00)
+  const searchDateTime = new Date(`${date}T${start_time}`);
+
+  console.log("searchDateTime {}", searchDateTime);
+  console.log("now {}", now);
+  console.log("if ", (searchDateTime < now));
+
+  // ถ้าเวลาที่ค้นหา น้อยกว่าเวลาปัจจุบัน แปลว่าเป็นอดีต
+  if (searchDateTime < now) {
+    return res.status(400).json({ 
+        message: 'ไม่สามารถค้นหาห้องว่างในวันหรือเวลาที่ผ่านมาแล้วได้' 
+    });
   }
 
   try {

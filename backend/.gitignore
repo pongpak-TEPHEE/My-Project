@@ -20,5 +20,7 @@ yarn-error.log*
 build/
 dist/
 
-# 6. file docker-compos
-docker-compose.yml
+# Ignore log files
+backend/src/logs/
+*.log
+*-audit.json

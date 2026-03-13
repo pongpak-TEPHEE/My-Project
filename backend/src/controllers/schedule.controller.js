@@ -107,7 +107,7 @@ export const importClassSchedules = async (req, res) => {
       if (isNaN(currentIdNum)) currentIdNum = 0;
     }
 
-    // --- STEP 2: วนลูปตรวจสอบข้อมูล---
+    // --- STEP 2: วนลูปตรวจสอบข้อมูล ---
     const validData = []; 
     const errors = [];
     let successCount = 0; // นับจำนวนคาบที่สร้างได้จริง (ไม่ใช่จำนวนแถว Excel)
@@ -136,6 +136,9 @@ export const importClassSchedules = async (req, res) => {
         const teacherName = row.name ? String(row.name).trim() : "";
         const teacherSurname = row.surname ? String(row.surname).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
+        const sec = row.sec ? String(row.sec).trim() : "";
+
+        const timestamp = new Date();
 
         const searchKey = getFullNameKey(row.name, row.surname);
         // 🚨 เพิ่ม 2 บรรทัดนี้เพื่อ Debug
@@ -300,7 +303,9 @@ export const importClassSchedules = async (req, res) => {
                   semester_id: semesterId,
                   temporarily_closed: false,
                   teacher_id: teacherId,
-                  date: targetDate
+                  date: targetDate,
+                  timestamp: timestamp,
+                  sec: sec
               });
               successCount++;
             } catch (err) {
@@ -342,7 +347,7 @@ export const importClassSchedules = async (req, res) => {
 };
 
 // /schedules/confirm
-// สาเหตุการที่ต้องมีการ confirm เพราะก่อนที่จะเอาข้อมูลลง database ต้องตรวจดูว่ามีการชนกับข้อมูลการจองอื่นๆไหม รับไๆด้ไหมก่อนจะเอาเข้าฐานข้อมูล
+// สาเหตุการที่ต้องมีการ confirm เพราะก่อนที่จะเอาข้อมูลลง database ต้องตรวจดูว่ามีการชนกับข้อมูลการจองอื่นๆไหม รับได้ไหมก่อนจะเอาเข้าฐานข้อมูล
 export const confirmSchedules = async (req, res) => {
   // รับข้อมูลเป็น Array จาก Frontend
   // body: { schedules: [ { room_id: '...', ... }, { ... } ] }
@@ -392,8 +397,8 @@ const insertScheduleToDB = async (client, data) => {
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, timestamp, sec)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       scheduleId,
       data.room_id,
@@ -405,11 +410,11 @@ const insertScheduleToDB = async (client, data) => {
       data.semester_id,
       data.date,
       data.temporarily_closed,
-      data.teacher_id
+      data.teacher_id,
+      data.timestamp,
+      data.sec
     ]
   );
-
-     // ส่งค่าตัวเลขล่าสุดกลับไป เพื่อให้รอบต่อไปนับต่อได้
 };
 
 // /schedule/:room_id
@@ -474,6 +479,7 @@ export const getSchedule = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงตารางเรียน' });
   }
 };
+
 
 export const getAllSchedules = async (req, res) => {
   try {

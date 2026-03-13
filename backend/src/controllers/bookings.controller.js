@@ -1,5 +1,5 @@
 import { pool } from '../config/db.js';
-import { sendBookingStatusEmail, sendBookingCancelledEmail } from '../services/mailer.js';
+import { sendBookingStatusEmail, sendBookingCancelledEmail, sendTeacherCancelledRoomEmailToStaff } from '../services/mailer.js';
 import crypto from 'crypto'; // ใช้ในการเ้ขารหัส booking_id
 import { logger } from '../utils/logger.js';
 
@@ -260,13 +260,26 @@ export const createBookingForTeacher = async (req, res) => {
   const startMins = timeToMinutes(start_time);
   const endMins = timeToMinutes(end_time);
 
-  // Business Logic: จำกัดเวลาจองสูงสุด (Max Duration)
-  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 6 ชม. ในหนึ่งครั้ง
+  // Business Logic 1: จำกัดช่วงเวลาให้บริการ (08:00 - 20:00)
+  const OPENING_MINS = timeToMinutes('08:00'); // 480 นาที
+  const CLOSING_MINS = timeToMinutes('20:00'); // 1200 นาที
+
+  // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
+  if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)' 
+    });
+  }
+
+  // Business Logic 2: จำกัดเวลาจองสูงสุด (Max Duration)
+  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 12 ชม. ในหนึ่งครั้ง
   const MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
   const bookingDuration = endMins - startMins;
 
   if (bookingDuration > MAX_DURATION_MINUTES) {
     return res.status(400).json({ 
+      success: false,
       message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)` 
     });
   }
@@ -383,32 +396,32 @@ export const createBookingForStaff = async (req, res) => {
 
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
-  // แปลงเวลาเป็นนาที
+// แปลงเวลาเป็นนาที
   const startMins = timeToMinutes(start_time);
   const endMins = timeToMinutes(end_time);
 
-  // Business Logic: จำกัดเวลาจองสูงสุด (Max Duration)
-  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 6 ชม. ในหนึ่งครั้ง
+  // Business Logic 1: จำกัดช่วงเวลาให้บริการ (07:30 - 20:00)
+  const OPENING_MINS = timeToMinutes('08:00'); // 480 นาที
+  const CLOSING_MINS = timeToMinutes('20:00'); // 1200 นาที
+
+  // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
+  if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)' 
+    });
+  }
+
+  // Business Logic 2: จำกัดเวลาจองสูงสุด (Max Duration)
+  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 12 ชม. ในหนึ่งครั้ง
   const MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
   const bookingDuration = endMins - startMins;
 
   if (bookingDuration > MAX_DURATION_MINUTES) {
     return res.status(400).json({ 
+      success: false,
       message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)` 
     });
-  }
-
-  // Business Logic: ห้ามจองล่วงหน้านาน
-  const MAX_ADVANCE_DAYS = 10; // สมมติให้จองล่วงหน้าได้ไม่เกิน 10 วัน
-  const bookingDate = new Date(date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // รีเซ็ตเวลาเป็นเที่ยงคืนเพื่อเทียบแค่วันที่
-
-  const diffTime = bookingDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays > MAX_ADVANCE_DAYS) {
-    return res.status(400).json({ message: `สามารถจองล่วงหน้าได้ไม่เกิน ${MAX_ADVANCE_DAYS} วันเท่านั้น` });
   }
   
   // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (teacher_id) และผู้อนุมัติ (approved_by)
@@ -489,7 +502,7 @@ export const createBookingForStaff = async (req, res) => {
        AND date = $2 
        AND (start_time < $4 AND end_time > $3)
        AND status IN ('approved', 'pending')`,
-      [room_id, date, start_time, end_time] 
+      [room_id, date, start_time, end_time]
     );
     
     if (bookingConflict.rows.length > 0) {
@@ -748,7 +761,7 @@ export const cancelBooking = async (req, res) => {
        FROM public."Booking" b
        JOIN public."Users" u ON b.teacher_id = u.user_id
        WHERE b.booking_id = $1 
-       AND (b.teacher_id = $2 OR $3 = 'staff')`, // เผื่อ admin ไว้ให้ด้วยครับ
+       AND (b.teacher_id = $2 OR $3 = 'staff')`, 
       [id, actionUserId, userRole]
     );
 
@@ -760,7 +773,7 @@ export const cancelBooking = async (req, res) => {
 
     const bookingDate = new Date(booking.date);
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // set เวลาให้เป็น 00:00 เพื่อเทียบแค่วันที่
+    today.setHours(0, 0, 0, 0); 
 
     if (bookingDate < today) {
         return res.status(400).json({ message: 'ไม่สามารถยกเลิกรายการย้อนหลังได้' });
@@ -770,6 +783,7 @@ export const cancelBooking = async (req, res) => {
         return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกหรือปฏิเสธไปแล้ว' });
     }
 
+    // อัปเดตสถานะใน Database
     await pool.query(
       `UPDATE public."Booking" 
        SET status = 'cancelled' 
@@ -777,17 +791,17 @@ export const cancelBooking = async (req, res) => {
       [id]
     );
 
-    // ถ้าคนที่กดยกเลิกไม่ใช้คนจองห้อง แสดงว่าเป็น admin (ถ้า admin จองเอง ยกเลิกเองจะไม่ส่ง email)
+    // 📧 โซนส่งอีเมลแจ้งเตือน (แยกตามบริบท)
+
+    // จัดฟอร์แมตข้อมูลเตรียมส่งอีเมล (ใช้ร่วมกันทั้ง 2 กรณี)
+    const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
+        year: 'numeric', month: 'long', day: 'numeric'
+    });
+    const timeSlot = `${booking.start_time.substring(0, 5)} - ${booking.end_time.substring(0, 5)} น.`;
+    const teacherFullName = `${booking.name} ${booking.surname}`;
+
+    // กรณีที่ 1: Staff เป็นคนกดยกเลิกการจองของ Teacher
     if (actionUserId !== booking.teacher_id) {
-
-        const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
-            year: 'numeric', month: 'long', day: 'numeric'
-        });
-        
-        const timeSlot = `${booking.start_time.substring(0, 5)} - ${booking.end_time.substring(0, 5)} น.`;
-        
-        const teacherFullName = `${booking.name} ${booking.surname}`;
-
         sendBookingCancelledEmail(
             booking.email,
             teacherFullName,
@@ -796,8 +810,30 @@ export const cancelBooking = async (req, res) => {
             timeSlot,
             cancel_reason || 'เจ้าหน้าที่ได้ทำการยกเลิกการจองนี้'
         );
-        
         console.log(`[System] สั่งส่งอีเมลแจ้งยกเลิกการจองให้ ${booking.email} เรียบร้อยแล้ว`);
+    } 
+    
+    // กรณีที่ 2: Teacher เป็นคนกดยกเลิกการจองของตัวเอง
+    else if (actionUserId === booking.teacher_id && userRole !== 'staff') {
+        // ดึงอีเมลของ Staff ทั้งหมดจาก Database
+        const staffQuery = await pool.query(
+            `SELECT email FROM public."Users" WHERE role = 'staff'`
+        );
+        
+        // แปลงผลลัพธ์ให้เป็น Array ของอีเมล (เช่น ['staff1@ku.th', 'staff2@ku.th'])
+        const staffEmails = staffQuery.rows.map(row => row.email);
+
+        if (staffEmails.length > 0) {
+            sendTeacherCancelledRoomEmailToStaff(
+                staffEmails,
+                teacherFullName,
+                booking.room_id,
+                formattedDate,
+                timeSlot,
+                cancel_reason || 'อาจารย์ผู้จองได้ทำการยกเลิก/งดใช้ห้องด้วยตนเอง'
+            );
+            console.log(`[System] สั่งส่งอีเมลแจ้งเตือน Staff เรื่องอาจารย์ ${teacherFullName} งดใช้ห้องเรียบร้อยแล้ว`);
+        }
     }
 
     res.json({ message: 'ยกเลิกการจองเรียบร้อยแล้ว' });

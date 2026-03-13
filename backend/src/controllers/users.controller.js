@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import crypto from 'crypto';
 
 
 // /users
@@ -30,49 +31,44 @@ export const getUsers = async (req, res) => {
 // /users/create
 // ใช้เมื่อสร้าง form สำหรับเพิ่ม user (teacher, staff) โดยใสข้อมูล (user_id, title, name, surname, role, email)
 export const createUser = async (req, res) => {
-
-  const { user_id, title, name, surname, role, email } = req.body;
+  // 1. เอา user_id ออกจากการรับค่า req.body
+  const { title, name, surname, role, email } = req.body;
 
   // ดักให้ต้องใส่เป็น mail.ku.th เท่านั้น
   if (!email.endsWith('@ku.th')) {
     return res.status(400).json({ message: 'อนุญาตให้ใช้งานเฉพาะอีเมล @ku.th เท่านั้น' });
   }
 
-
-  // Validation: ตรวจสอบข้อมูลจำเป็น
-  if (!user_id || !name || !role || !email) {
-    return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน (รหัส, ชื่อ, อีเมล, ตำแหน่ง)' });
+  // 2. อัปเดต Validation: เอา user_id ออกจากการเช็ค
+  if (!name || !role || !email) {
+    return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, อีเมล, ตำแหน่ง)' });
   }
 
+  // 3. สร้าง user_id แบบสุ่มด้วย UUID
+  const user_id = crypto.randomUUID().replace(/-/g, '').substring(0, 20);
+
   try {
-    
-    // เช็คว่ามี User นี้ในระบบหรือยัง (เช็คทั้ง user_id, email และ name+surname)
-    // ใช้ surname || '' เพื่อป้องกัน error กรณีที่ผู้ใช้ไม่มีนามสกุล
+    // 4. อัปเดตการเช็คข้อมูลซ้ำ: ตัดการเช็ค user_id ออก เช็คแค่ email และ ชื่อ-นามสกุล
     const checkUser = await pool.query(
-      `SELECT user_id, email, name, surname 
+      `SELECT email, name, surname 
        FROM public."Users" 
-       WHERE user_id = $1 OR email = $2 OR (name = $3 AND surname = $4)`, 
-      [user_id, email, name, surname || '']
+       WHERE email = $1 OR (name = $2 AND surname = $3)`, 
+      [email, name, surname || '']
     );
 
     // ถ้าเจอข้อมูลแสดงว่ามีอะไรซ้ำสักอย่าง
     if (checkUser.rows.length > 0) {
       const existing = checkUser.rows[0];
       
-      // ดักทีละเคส เพื่อให้แจ้งเตือนได้แม่นยำ
-      if (existing.user_id === user_id) {
-        return res.status(400).json({ message: 'รหัสผู้ใช้งานนี้มีอยู่ในระบบแล้ว' });
-      }
       if (existing.email === email) {
         return res.status(400).json({ message: 'อีเมลนี้ถูกใช้งานแล้ว' });
       }
       
-      // ถ้าไม่ซ้ำรหัส ไม่ซ้ำอีเมล แสดงว่าชื่อซ้ำแน่นอน
+      // ถ้าไม่ซ้ำอีเมล แสดงว่าชื่อซ้ำแน่นอน
       return res.status(400).json({ message: `ชื่อและนามสกุล '${name} ${surname || ''}' มีอยู่ในระบบแล้ว` });
     }
 
-    // เพิ่มลง Database
-    // created_at จะใช้ฟังก์ชัน NOW() ของ PostgreSQL เพื่อเอาเวลาปัจจุบันของ Database
+    // 5. เพิ่มลง Database (ส่งตัวแปร user_id ที่เพิ่งสุ่มมาเข้าไป)
     const newUser = await pool.query(
       `INSERT INTO public."Users" 
        (user_id, title, name, surname, role, email, is_verified, is_active, created_at)
@@ -96,9 +92,9 @@ export const createUser = async (req, res) => {
 
   } catch (error) {
     console.error('Create User Error:', error);
-    // เช็ค Error จาก Database (เช่น user_id ซ้ำ)
+    // เช็ค Error จาก Database
     if (error.code === '23505') {
-        return res.status(400).json({ message: 'ข้อมูลซ้ำ: รหัสผู้ใช้หรืออีเมลนี้ถูกใช้งานแล้ว' });
+        return res.status(400).json({ message: 'ข้อมูลซ้ำ: อีเมลนี้ถูกใช้งานแล้ว' });
     }
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการเพิ่มข้อมูล' });
   }
@@ -211,24 +207,23 @@ export const editUser = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่ม Transaction
 
-    // อัปเดตข้อมูลผู้ใช้งานลงตาราง Users
     const updateUserResult = await client.query(
       `UPDATE public."Users" 
        SET title = $1, 
            name = $2, 
            surname = $3, 
-           email = $5,
-           is_verified = $6,
-           is_active = $7
-       WHERE user_id = $8`,
+           email = $4,         
+           is_verified = $5, 
+           is_active = $6    
+       WHERE user_id = $7`,  
       [
-        title, 
-        name, 
-        surname, 
-        email, 
-        false,
-        true,
-        user_id
+        title,      // ตัวที่ 1 ($1)
+        name,       // ตัวที่ 2 ($2)
+        surname,    // ตัวที่ 3 ($3)
+        email,      // ตัวที่ 4 ($4)
+        false,      // ตัวที่ 5 ($5) - เซ็ตให้ต้องยืนยันอีเมลใหม่
+        true,       // ตัวที่ 6 ($6) - เซ็ตให้ใช้งานได้
+        user_id     // ตัวที่ 7 ($7)
       ]
     );
 
