@@ -19,3 +19,6 @@ yarn-error.log*
 # 5. โฟลเดอร์ Build (React build เสร็จจะได้พวกนี้มา)
 build/
 dist/
+
+# 6. file docker-compos
+docker-compose.yml
