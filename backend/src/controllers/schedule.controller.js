@@ -127,6 +127,13 @@ export const importClassSchedules = async (req, res) => {
             userMap.set(key, user.user_id);
         }
     });
+
+    // ✅ Timestamp ปัจจุบัน
+    const dateCreate = new Date().toISOString(); // เช่น "2025-03-26T10:30:00.000Z"
+
+    // ✅ Unique string ไม่เกิน 20 ตัวอักษร เช่น "sch_a1b2c3d4e5f6"
+    const uniqueSchedules = `sch_${crypto.randomBytes(8).toString('hex')}`; // ยาว 20 ตัวอักษร
+
     // Loop 1: วนตามแถวใน Excel (รายวิชา)
     for (const [index, row] of importedData.entries()) {
         
@@ -137,6 +144,11 @@ export const importClassSchedules = async (req, res) => {
         const teacherSurname = row.surname ? String(row.surname).trim() : "";
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
         const sec = row.sec ? String(row.sec).trim() : "";
+
+        const department = row.department ? String(row.department).trim() : "";
+        const studyYear = row.study_year ? String(row.study_year).trim() : "";
+        const programType = row.program_type ? String(row.program_type).trim() : "";
+
 
         const searchKey = getFullNameKey(row.name, row.surname);
         // 🚨 บรรทัดนี้เพื่อ Debug
@@ -302,7 +314,12 @@ export const importClassSchedules = async (req, res) => {
                   temporarily_closed: false,
                   teacher_id: teacherId,
                   date: targetDate,
-                  sec: sec
+                  sec: sec,
+                  dateCreate: dateCreate,
+                  uniqueSchedules: uniqueSchedules,
+                  department: department,
+                  study_year: studyYear,        
+                  program_type: programType     
               });
               successCount++;
             } catch (err) {
@@ -359,10 +376,17 @@ export const confirmSchedules = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่ม Transaction (ถ้าพัง ให้ยกเลิกทั้งหมด)
 
+    const { uniqueSchedules, dateCreate, department, study_year, program_type } = schedules[0];
+    await client.query(
+      `INSERT INTO public."DetailSchedules" 
+      (unique_schedules, date_create, department, study_year, program_type)
+      VALUES ($1, $2, $3, $4, $5)`,
+      [uniqueSchedules, dateCreate, department, study_year, program_type]
+    );
+
     console.log(`💾 กำลังบันทึก ${schedules.length} รายการ...`);
 
     for (const schedule of schedules) {
-
       await insertScheduleToDB(client, schedule); 
     }
 
@@ -388,21 +412,14 @@ const insertScheduleToDB = async (client, data) => {
   // UUID  จะได้รหัสยาวๆ เช่น '550e8400-e29b-41d4-a716-446655440000'
   const scheduleId = crypto.randomUUID(); 
 
-  // ✅ Timestamp ปัจจุบัน
-  const dateCreate = new Date().toISOString(); // เช่น "2025-03-26T10:30:00.000Z"
-
-  // ✅ Unique string ไม่เกิน 20 ตัวอักษร เช่น "sch_a1b2c3d4e5f6"
-  const uniqueSchedules = `sch_${crypto.randomBytes(8).toString('hex')}`; // ยาว 20 ตัวอักษร
-
-
   // สุ่มแบบสั้นๆ 'sch_a1b2c3d4' (ยาว 12 ตัวอักษร)
   // const randomHex = crypto.randomBytes(4).toString('hex'); 
   // const scheduleId = `sch_${randomHex}`;
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, sec, date_create, unique_schedules)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, sec, unique_schedules)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       scheduleId,
       data.room_id,
@@ -416,10 +433,10 @@ const insertScheduleToDB = async (client, data) => {
       data.temporarily_closed,
       data.teacher_id,
       data.sec,
-      dateCreate,
-      uniqueSchedules 
+      data.uniqueSchedules 
     ]
   );
+
 };
 
 // /schedule/:room_id
