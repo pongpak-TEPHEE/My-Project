@@ -138,10 +138,8 @@ export const importClassSchedules = async (req, res) => {
         const semesterId = row.semester_id ? String(row.semester_id).trim() : "";
         const sec = row.sec ? String(row.sec).trim() : "";
 
-        const timestamp = new Date();
-
         const searchKey = getFullNameKey(row.name, row.surname);
-        // 🚨 เพิ่ม 2 บรรทัดนี้เพื่อ Debug
+        // 🚨 บรรทัดนี้เพื่อ Debug
         console.log(`🔍 กำลังหาชื่อ: [${searchKey}]`); 
         console.log(`📋 รายชื่อในฐานข้อมูล (5 คนแรก):`, Array.from(userMap.keys()).slice(0, 8));
         // ค้นหา teacherId จาก userMap โดยใช้ ชื่อและนามสกุล ต่อกัน
@@ -304,7 +302,6 @@ export const importClassSchedules = async (req, res) => {
                   temporarily_closed: false,
                   teacher_id: teacherId,
                   date: targetDate,
-                  timestamp: timestamp,
                   sec: sec
               });
               successCount++;
@@ -391,14 +388,21 @@ const insertScheduleToDB = async (client, data) => {
   // UUID  จะได้รหัสยาวๆ เช่น '550e8400-e29b-41d4-a716-446655440000'
   const scheduleId = crypto.randomUUID(); 
 
+  // ✅ Timestamp ปัจจุบัน
+  const dateCreate = new Date().toISOString(); // เช่น "2025-03-26T10:30:00.000Z"
+
+  // ✅ Unique string ไม่เกิน 20 ตัวอักษร เช่น "sch_a1b2c3d4e5f6"
+  const uniqueSchedules = `sch_${crypto.randomBytes(8).toString('hex')}`; // ยาว 20 ตัวอักษร
+
+
   // สุ่มแบบสั้นๆ 'sch_a1b2c3d4' (ยาว 12 ตัวอักษร)
   // const randomHex = crypto.randomBytes(4).toString('hex'); 
   // const scheduleId = `sch_${randomHex}`;
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, timestamp, sec)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, sec, date_create, unique_schedules)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [
       scheduleId,
       data.room_id,
@@ -411,8 +415,9 @@ const insertScheduleToDB = async (client, data) => {
       data.date,
       data.temporarily_closed,
       data.teacher_id,
-      data.timestamp,
-      data.sec
+      data.sec,
+      dateCreate,
+      uniqueSchedules 
     ]
   );
 };
@@ -541,73 +546,6 @@ export const getAllSchedules = async (req, res) => {
 
 // // PATCH /schedules/:id/status
 // ฟังก์ชันเปลี่ยนสถานะงดใช้ห้อง
-/**
- * @swagger
- * /schedules/{id}/status:
- *   patch:
- *     summary: เปลี่ยนสถานะงดใช้ห้อง/งดคลาสเรียนรายคาบ (Staff แก้ได้ทั้งหมด, Teacher แก้ได้เฉพาะของตัวเอง)
- *     tags:
- *       - Schedules
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *         description: รหัสคาบเรียน (schedule_id) ที่ต้องการเปลี่ยนสถานะ (เช่น "sch-1001")
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - temporarily_closed
- *             properties:
- *               temporarily_closed:
- *                 type: boolean
- *                 description: สถานะการงดคลาส (true = งดใช้ห้อง/งดคลาส, false = เรียนปกติ)
- *                 example: true
- *     responses:
- *       200:
- *         description: อัปเดตสถานะสำเร็จ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *             example:
- *               message: "อัปเดตสถานะสำเร็จ: งดใช้ห้อง (Closed)"
- *               schedule:
- *                 schedule_id: "sch-1001"
- *                 subject_name: "Software Engineering"
- *                 temporarily_closed: true
- *       400:
- *         description: ข้อมูลที่ส่งมาไม่ถูกต้อง (ไม่ได้ส่งเป็น Boolean)
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *             example:
- *               message: "ข้อมูลไม่ถูกต้อง (ต้องเป็น true หรือ false)"
- *       403:
- *         description: ไม่มีสิทธิ์แก้ไขข้อมูล (พยายามแก้ไขคลาสของอาจารย์ท่านอื่น) หรือไม่พบข้อมูลคาบเรียนนี้
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *             example:
- *               message: "ไม่พบข้อมูล หรือ คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้"
- *       500:
- *         description: ระบบขัดข้อง
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *             example:
- *               message: "เกิดข้อผิดพลาดในการอัปเดตสถานะ"
- */
 export const updateScheduleStatus = async (req, res) => {
   const { id } = req.params; // รับ schedule_id
   const { temporarily_closed } = req.body;
