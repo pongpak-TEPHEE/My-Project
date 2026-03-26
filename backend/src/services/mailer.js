@@ -239,4 +239,3 @@ export const sendTeacherCancelledRoomEmailToStaff = async (staffEmails, teacherN
         return false;
     }
 };
-

@@ -557,6 +557,7 @@ export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
   const { status, reject_reason } = req.body; // รับ reject_reason มาด้วยเผื่อกรณีปฏิเสธ
 
+
   if (!['approved', 'rejected', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
   }
@@ -685,10 +686,17 @@ export const getAllBookingSpecific =  async (req, res) => {
 };
 
 // /bookings/allBooking
-// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในทุกห้อง
+// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" หรือ "ยกเลิกแล้ว" ในทุกห้อง
 export const getAllBooking = async (req, res) => {
     const { status } = req.query; 
     try {
+        // แปลง status เป็น array รองรับทั้ง string เดียวและหลายค่า
+        const statusList = status
+            ? Array.isArray(status) ? status : status.split(',')
+            : ['approved', 'cancel'];
+
+        const placeholders = statusList.map((_, i) => `$${i + 1}`).join(', ');
+
         const query = `
             SELECT 
                 b.booking_id,
@@ -702,12 +710,11 @@ export const getAllBooking = async (req, res) => {
                 u.surname as teacher_surname
             FROM public."Booking" b
             JOIN public."Users" u ON b.teacher_id = u.user_id
-            WHERE b.status = $1
+            WHERE b.status = ANY(ARRAY[${placeholders}])
             ORDER BY b.date DESC, b.start_time ASC
         `;
         
-        // ส่งแค่ parameter ตัวเดียว คือ status
-        const result = await pool.query(query, [status || 'approved']);
+        const result = await pool.query(query, statusList);
         
         res.json(result.rows); 
     } catch (err) {

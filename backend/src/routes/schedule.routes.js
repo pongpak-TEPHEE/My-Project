@@ -1,12 +1,25 @@
 import express from 'express';
 import { handleExcelUpload } from '../middleware/upload.js';
-import { importClassSchedules, getSchedule, confirmSchedules, updateScheduleStatus, getAllSchedules } from '../controllers/schedule.controller.js';
+import multer from 'multer';
+import { importClassSchedules, 
+    getSchedule, 
+    confirmSchedules, 
+    updateScheduleStatus, 
+    getAllSchedules, 
+    getScheduleLog,
+    editScheduleLog,
+    deleteScheduleLog,
+    reuploadScheduleFile,
+    confirmReuploadSchedules } from '../controllers/schedule.controller.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
-// ตั้งค่า Multer ให้เก็บไฟล์ไว้ใน RAM (MemoryStorage) ชั่วคราว เพื่อให้ Controller อ่านได้เลยไม่ต้องบันทึกลง Disk
-
+// ==========================================
+// 📦 ตั้งค่า Multer สำหรับรับไฟล์ Excel
+// ==========================================
+// เก็บไฟล์ไว้ใน Memory (Buffer) เพื่อส่งให้ ExcelJS อ่านได้ทันทีโดยไม่ต้องเซฟลงเครื่อง
+const upload = multer({ storage: multer.memoryStorage() });
 
 // อัปโหลดไฟล์ Excel (เพื่อ Preview)
 // POST /schedules/import
@@ -595,5 +608,39 @@ router.get('/', getAllSchedules)
  *               message: "เกิดข้อผิดพลาดในการอัปเดตสถานะ"
  */
 router.patch('/:id/status', authenticateToken, authorizeRole('teacher', 'staff'), updateScheduleStatus);
+
+
+
+// ==========================================
+// 🚏 Routes สำหรับจัดการประวัติตารางเรียน
+// ==========================================
+
+// 1. GET: ดึงข้อมูลประวัติตารางเรียน (DetailSchedules) ไปแสดงผล
+// 🟢 API: GET /api/schedule-logs
+router.get('/allScheduleLog', getScheduleLog);
+
+// 2. PUT: แก้ไขข้อมูล Header (ภาควิชา, ชั้นปี, โครงการ)
+// 🟠 API: PUT /api/schedule-logs/:id
+router.put('/:id', editScheduleLog);
+
+// 3. DELETE: ลบข้อมูลตารางเรียน (แม่และลูก) ทิ้งทั้งหมด
+// 🔴 API: DELETE /api/schedule-logs/:id
+router.delete('/:id', deleteScheduleLog);
+
+
+// ==========================================
+// 🔄 Routes สำหรับอัปเดต/เขียนทับไฟล์ Excel
+// ==========================================
+
+// 4. POST: อัปโหลดไฟล์ Excel ใหม่เพื่อ Preview (ใช้ข้อมูล Header เดิม)
+// 🟡 API: POST /api/schedule-logs/reupload/:id
+// ⚠️ ต้องมี upload.single('file') ดักไว้ เพื่อรับไฟล์จาก Frontend ที่แนบมากับชื่อ 'file'
+router.post('/reupload/:id', upload.single('file'), reuploadScheduleFile);
+
+// 5. PUT: ยืนยันการบันทึก (ลบข้อมูลคาบเรียนเก่าทิ้ง และ Insert ของใหม่ลงไป)
+// 🟠 API: PUT /api/schedule-logs/reconfirm/:id
+router.put('/reconfirm/:id', confirmReuploadSchedules);
+
+
 
 export default router;
