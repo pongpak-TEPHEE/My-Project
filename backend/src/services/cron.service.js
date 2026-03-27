@@ -31,7 +31,7 @@ export const startCleanupJob = () => {
          WHERE status = 'approved'
          AND (
            date < CURRENT_DATE 
-           OR (date = CURRENT_DATE AND end_time < LOCALTIME(0)::time)
+           OR (date = CURRENT_DATE AND end_time < CURRENT_TIME
          )`
       );
 

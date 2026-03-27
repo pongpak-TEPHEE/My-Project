@@ -10,10 +10,17 @@ import { importClassSchedules,
     editScheduleLog,
     deleteScheduleLog,
     reuploadScheduleFile,
-    confirmReuploadSchedules } from '../controllers/schedule.controller.js';
+    confirmReuploadSchedules,
+    exportTermReport
+    } 
+    from '../controllers/schedule.controller.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+
+// api สำหรับการสรัาง log ข้อมูลเพื่อดู
+router.get('/export-excel', exportTermReport);
 
 // ==========================================
 // 📦 ตั้งค่า Multer สำหรับรับไฟล์ Excel
@@ -640,6 +647,7 @@ router.post('/reupload/:id', upload.single('file'), reuploadScheduleFile);
 // 5. PUT: ยืนยันการบันทึก (ลบข้อมูลคาบเรียนเก่าทิ้ง และ Insert ของใหม่ลงไป)
 // 🟠 API: PUT /api/schedule-logs/reconfirm/:id
 router.put('/reconfirm/:id', confirmReuploadSchedules);
+
 
 
 

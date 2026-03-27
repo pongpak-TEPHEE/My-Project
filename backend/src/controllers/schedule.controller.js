@@ -1006,3 +1006,101 @@ export const reuploadScheduleFile = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการตรวจสอบและอัปเดตไฟล์' });
   }
 };
+
+export const exportTermReport = async (req, res) => {
+  // รับช่วงเวลาของ 1 เทอมมาจาก Frontend (เช่น 2026-06-01 ถึง 2026-10-31)
+  const { startDate, endDate } = req.query; 
+
+  if (!startDate || !endDate) {
+    return res.status(400).json({ message: 'กรุณาระบุวันที่เริ่มต้นและสิ้นสุดของเทอม' });
+  }
+
+  try {
+    // 📊 1. Query ข้อมูลการจอง (Booking) ในช่วงเวลาของเทอม
+    const bookingResult = await pool.query(
+      `SELECT booking_id, purpose, room_id, date, start_time, end_time, status 
+       FROM public."Booking" 
+       WHERE date >= $1 AND date <= $2
+       ORDER BY date ASC, start_time ASC`,
+      [startDate, endDate]
+    );
+
+    // 📚 2. Query ข้อมูลตารางเรียน (Schedules) ในช่วงเวลาของเทอม
+    // 💡 อัปเดต: ดึง sec และใช้ CONCAT รวมชื่อ-นามสกุลเป็น full_name
+    const scheduleResult = await pool.query(
+      `SELECT 
+         room_id, 
+         CONCAT(teacher_name, ' ', teacher_surname) AS full_name,
+         subject_name, 
+         start_time, 
+         end_time, 
+         date, 
+         sec
+       FROM public."Schedules" 
+       WHERE date >= $1 AND date <= $2
+       ORDER BY date ASC, start_time ASC`,
+      [startDate, endDate]
+    );
+
+    // ==========================================
+    // 📝 3. สร้างไฟล์ Excel ด้วย exceljs
+    // ==========================================
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'KUSRC Room Booking System';
+
+    // ---- Sheet ที่ 1: ประวัติการจอง ----
+    const bookingSheet = workbook.addWorksheet('ประวัติการจอง (Bookings)');
+    bookingSheet.columns = [
+      { header: 'รหัสการจอง', key: 'booking_id', width: 20 },
+      { header: 'ห้อง', key: 'room_id', width: 15 },
+      { header: 'หัวข้อ/เหตุผล', key: 'purpose', width: 30 },
+      { header: 'วันที่', key: 'date', width: 15 },
+      { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
+      { header: 'เวลาจบ', key: 'end_time', width: 15 },
+      { header: 'สถานะ', key: 'status', width: 15 }
+    ];
+    // แต่งสี Header ให้สวยงาม (Optional)
+    bookingSheet.getRow(1).font = { bold: true };
+    // ยัดข้อมูลจาก Database ลง Sheet
+    bookingSheet.addRows(bookingResult.rows);
+
+
+    // ---- Sheet ที่ 2: ตารางเรียน ----
+    const scheduleSheet = workbook.addWorksheet('ตารางเรียน (Schedules)');
+    
+    // 💡 อัปเดต: เปลี่ยน Header และ Key ตามโครงสร้างใหม่
+    scheduleSheet.columns = [
+      { header: 'ห้อง', key: 'room_id', width: 15 },
+      { header: 'ผู้จอง', key: 'full_name', width: 30 }, // รับค่ามาจาก CONCAT
+      { header: 'รายวิชา', key: 'subject_name', width: 35 },
+      { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
+      { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
+      { header: 'วันที่', key: 'date', width: 15 },
+      { header: 'SEC', key: 'sec', width: 10 }
+    ];
+    
+    scheduleSheet.getRow(1).font = { bold: true };
+    scheduleSheet.addRows(scheduleResult.rows);
+
+    // ==========================================
+    // 🚀 4. ส่งไฟล์กลับไปให้เบราว์เซอร์ดาวน์โหลด
+    // ==========================================
+    // ตั้งค่า Header ของ HTTP Response เพื่อบังคับให้เบราว์เซอร์รู้ว่านี่คือการดาวน์โหลดไฟล์ Excel
+    res.setHeader(
+      'Content-Type', 
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition', 
+      `attachment; filename=Room_Usage_Report_${startDate}_to_${endDate}.xlsx`
+    );
+
+    // เขียนข้อมูลลง Response แล้วส่งออกไป
+    await workbook.xlsx.write(res);
+    res.end(); // ปิดการเชื่อมต่อ
+
+  } catch (error) {
+    console.error('Export Excel Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการสร้างไฟล์รายงาน' });
+  }
+};
