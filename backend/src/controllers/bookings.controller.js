@@ -19,7 +19,7 @@ export const getPendingBookings = async (req, res) => {
          u.name, u.surname, u.email
       FROM public."Booking" b
       JOIN public."Rooms" r ON b.room_id = r.room_id
-      JOIN public."Users" u ON b.teacher_id = u.user_id
+      JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'pending'
     `;
     
@@ -27,13 +27,13 @@ export const getPendingBookings = async (req, res) => {
     
     if (requester.role === 'teacher') {
         // ถ้าเป็น Teacher: บังคับ กรองเฉพาะของตัวเอง
-        sql += ` AND b.teacher_id = $1`;
+        sql += ` AND b.user_id = $1`;
         params.push(requester.user_id);
         
     } else if (requester.role === 'staff') {
         // กรณีส่ง
         if (req.query.user_id) {
-            sql += ` AND b.teacher_id = $1`;
+            sql += ` AND b.user_id = $1`;
             params.push(req.query.user_id);
         }
     }
@@ -80,7 +80,7 @@ export const getRejectedBookings = async (req, res) => {
          u.email
       FROM public."Booking" b
       JOIN public."Rooms" r ON b.room_id = r.room_id
-      JOIN public."Users" u ON b.teacher_id = u.user_id
+      JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'rejected'
     `;
 
@@ -89,13 +89,13 @@ export const getRejectedBookings = async (req, res) => {
     // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
         // Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
-        sql += ` AND b.teacher_id = $1`;
+        sql += ` AND b.user_id = $1`;
         params.push(requester.user_id);
 
     } else if (requester.role === 'staff' || requester.role === 'admin') {
         // Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
         if (user_id) {
-            sql += ` AND b.teacher_id = $1`;
+            sql += ` AND b.user_id = $1`;
             params.push(user_id);
         }
     }
@@ -143,7 +143,7 @@ export const getApprovedBookings = async (req, res) => {
          u.email
       FROM public."Booking" b
       JOIN public."Rooms" r ON b.room_id = r.room_id
-      JOIN public."Users" u ON b.teacher_id = u.user_id
+      JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'approved'
     `;
 
@@ -152,13 +152,13 @@ export const getApprovedBookings = async (req, res) => {
     // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
         // Teacher: เห็นเฉพาะของตัวเองเท่านั้น
-        sql += ` AND b.teacher_id = $${params.length + 1}`;
+        sql += ` AND b.user_id = $${params.length + 1}`;
         params.push(requester.user_id);
 
     } else if (requester.role === 'staff' || requester.role === 'admin') {
         // Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
         if (user_id) {
-            sql += ` AND b.teacher_id = $${params.length + 1}`;
+            sql += ` AND b.user_id = $${params.length + 1}`;
             params.push(user_id);
         }
     }
@@ -212,7 +212,7 @@ export const getRoomStatus = async (req, res) => {
          u.name, 
          u.surname
        FROM public."Booking" b
-       JOIN public."Users" u ON b.teacher_id = u.user_id
+       JOIN public."Users" u ON b.user_id = u.user_id
        WHERE b.room_id = $1 
        AND b.date = $2 
        AND b.status = 'approved' 
@@ -254,7 +254,7 @@ const timeToMinutes = (timeStr) => {
 // สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
   const { room_id, purpose, date, start_time, end_time } = req.body;
-  const teacher_id = req.user.user_id;
+  const user_id = req.user.user_id;
 
   // แปลงเวลาเป็นนาที
   const startMins = timeToMinutes(start_time);
@@ -373,9 +373,9 @@ export const createBookingForTeacher = async (req, res) => {
     // บันทึกข้อมูล
     await pool.query(
       `INSERT INTO public."Booking" 
-       (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status)
+       (booking_id, room_id, user_id, purpose, date, start_time, end_time, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')`,
-      [bookingId, room_id, teacher_id, purpose, date, start_time, end_time]
+      [bookingId, room_id, user_id, purpose, date, start_time, end_time]
     );
 
     // 4. ส่ง response
@@ -424,7 +424,7 @@ export const createBookingForStaff = async (req, res) => {
     });
   }
   
-  // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (teacher_id) และผู้อนุมัติ (approved_by)
+  // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (user_id) และผู้อนุมัติ (approved_by)
   const staff_id = req.user.user_id; 
 
   try {
@@ -529,7 +529,7 @@ export const createBookingForStaff = async (req, res) => {
     // บันทึกข้อมูล (Status = approved)
     await pool.query(
       `INSERT INTO public."Booking" 
-       (booking_id, room_id, teacher_id, purpose, date, start_time, end_time, status, approved_by)
+       (booking_id, room_id, user_id, purpose, date, start_time, end_time, status, approved_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8)`,
       [bookingId, room_id, staff_id, purpose, date, start_time, end_time, staff_id]
     );
@@ -580,7 +580,7 @@ export const updateBookingStatus = async (req, res) => {
     const details = await pool.query(
       `SELECT u.email, u.name, u.surname, r.room_id, r.room_type 
        FROM public."Booking" b
-       JOIN public."Users" u ON b.teacher_id = u.user_id
+       JOIN public."Users" u ON b.user_id = u.user_id
        JOIN public."Rooms" r ON b.room_id = r.room_id
        WHERE b.booking_id = $1`,
       [id]
@@ -673,7 +673,7 @@ export const getAllBookingSpecific =  async (req, res) => {
                 u.name as teacher_name,
                 u.surname as teacher_surname
             FROM public."Booking" b
-            JOIN public."Users" u ON b.teacher_id = u.user_id
+            JOIN public."Users" u ON b.user_id = u.user_id
             WHERE b.room_id = $1 AND b.status = $2
         `;
         const result = await pool.query(query, [roomId, status || 'approved']);
@@ -709,7 +709,7 @@ export const getAllBooking = async (req, res) => {
                 u.name as teacher_name,
                 u.surname as teacher_surname
             FROM public."Booking" b
-            JOIN public."Users" u ON b.teacher_id = u.user_id
+            JOIN public."Users" u ON b.user_id = u.user_id
             WHERE b.status = ANY(ARRAY[${placeholders}])
             ORDER BY b.date DESC, b.start_time ASC
         `;
@@ -726,7 +726,7 @@ export const getAllBooking = async (req, res) => {
 // /bookings/my-history
 // ดึงรายการที่เราเคยจอง เช่น ผมนาย A มี userId = 001 : จองห้องอะไรบ้างก็ดึงมาทั้งหมด
 export const getMyBookings = async (req, res) => {
-  const teacher_id = req.user.userId;
+  const user_id = req.user.userId;
 
   try {
     const result = await pool.query(
@@ -741,9 +741,9 @@ export const getMyBookings = async (req, res) => {
          r.room_id
        FROM public."Booking" b
        JOIN public."Rooms" r ON b.room_id = r.room_id
-       WHERE b.teacher_id = $1
+       WHERE b.user_id = $1
        ORDER BY b.date DESC, b.start_time ASC`,
-      [teacher_id]
+      [user_id]
     );
 
     res.json(result.rows);
@@ -766,9 +766,9 @@ export const cancelBooking = async (req, res) => {
     const checkQuery = await pool.query(
       `SELECT b.*, u.email, u.name, u.surname 
        FROM public."Booking" b
-       JOIN public."Users" u ON b.teacher_id = u.user_id
+       JOIN public."Users" u ON b.user_id = u.user_id
        WHERE b.booking_id = $1 
-       AND (b.teacher_id = $2 OR $3 = 'staff')`, 
+       AND (b.user_id = $2 OR $3 = 'staff')`, 
       [id, actionUserId, userRole]
     );
 
@@ -808,7 +808,7 @@ export const cancelBooking = async (req, res) => {
     const teacherFullName = `${booking.name} ${booking.surname}`;
 
     // กรณีที่ 1: Staff เป็นคนกดยกเลิกการจองของ Teacher
-    if (actionUserId !== booking.teacher_id) {
+    if (actionUserId !== booking.user_id) {
         sendBookingCancelledEmail(
             booking.email,
             teacherFullName,
@@ -821,7 +821,7 @@ export const cancelBooking = async (req, res) => {
     } 
     
     // กรณีที่ 2: Teacher เป็นคนกดยกเลิกการจองของตัวเอง
-    else if (actionUserId === booking.teacher_id && userRole !== 'staff') {
+    else if (actionUserId === booking.user_id && userRole !== 'staff') {
         // ดึงอีเมลของ Staff ทั้งหมดจาก Database
         const staffQuery = await pool.query(
             `SELECT email FROM public."Users" WHERE role = 'staff'`
@@ -895,7 +895,7 @@ export const editBooking = async (req, res) => {
 
     // ตรวจสอบสิทธิ์ (เจ้าของ หรือ staff เท่านั้น)
     // user_id ของคนที่จองและ user_id ของคนที่แก้ไขต้องตรงกัน
-    if (oldBooking.teacher_id !== user_id) {
+    if (oldBooking.user_id !== user_id) {
       return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แก้ไขการจองของคนอื่น' });
     }
 
@@ -981,8 +981,8 @@ export const getMyActiveBookings = async (req, res) => {
          u.name,
          u.surname
        FROM public."Booking" b
-       JOIN public."Users" u ON b.teacher_id = u.user_id
-       WHERE b.teacher_id = $1
+       JOIN public."Users" u ON b.user_id = u.user_id
+       WHERE b.user_id = $1
        AND b.date >= CURRENT_DATE 
        AND b.status IN ('pending', 'approved') 
        ORDER BY b.date ASC, b.start_time ASC`, 
@@ -1015,7 +1015,7 @@ export const getMyBookingHistory = async (req, res) => {
       `SELECT 
           b.booking_id, 
           b.room_id, 
-          b.teacher_id, 
+          b.user_id, 
           b.purpose, 
           b.date, 
           b.start_time, 
@@ -1024,8 +1024,8 @@ export const getMyBookingHistory = async (req, res) => {
           u.name,
           u.surname
        FROM public."Booking" b
-       JOIN public."Users" u ON b.teacher_id = u.user_id
-       WHERE b.teacher_id = $1
+       JOIN public."Users" u ON b.user_id = u.user_id
+       WHERE b.user_id = $1
        AND (
          b.date < CURRENT_DATE
          OR 
@@ -1039,7 +1039,7 @@ export const getMyBookingHistory = async (req, res) => {
       `SELECT 
           schedule_id, room_id, subject_name, teacher_name, date, start_time, end_time, temporarily_closed
        FROM public."Schedules"
-       WHERE teacher_id = $1 
+       WHERE user_id = $1 
        AND temporarily_closed = TRUE`, 
       [user_id]
     );
@@ -1053,7 +1053,7 @@ export const getMyBookingHistory = async (req, res) => {
     const bookings = bookingResult.rows.map(row => ({
       id: row.booking_id,
       type: 'booking',
-      teacher_id: row.teacher_id,
+      user_id: row.user_id,
       teacher_name: `${row.name} ${row.surname}`, // รวมชื่อและนามสกุล
       purpose: row.purpose,
       room_id: row.room_id,

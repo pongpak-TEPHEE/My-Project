@@ -112,15 +112,15 @@ export const deleteUser = async (req, res) => {
 
     // ตรวจสอบประวัติการใช้งาน (Check Dependencies)
 
-    // เช็คว่าเคยมีการจองห้องหรือไม่? (เช็คจาก teacher_id)
+    // เช็คว่าเคยมีการจองห้องหรือไม่? (เช็คจาก user_id)
     const checkBooking = await client.query(
-      `SELECT 1 FROM public."Booking" WHERE teacher_id = $1 LIMIT 1`,
+      `SELECT 1 FROM public."Booking" WHERE user_id = $1 LIMIT 1`,
       [user_id]
     );
 
-    // เช็คว่าเคยมีตารางสอนหรือไม่? (เช็คจาก teacher_id)
+    // เช็คว่าเคยมีตารางสอนหรือไม่? (เช็คจาก user_id)
     const checkSchedule = await client.query(
-      `SELECT 1 FROM public."Schedules" WHERE teacher_id = $1 LIMIT 1`,
+      `SELECT 1 FROM public."Schedules" WHERE user_id = $1 LIMIT 1`,
       [user_id]
     );
 
@@ -151,7 +151,7 @@ export const deleteUser = async (req, res) => {
       await client.query(
         `UPDATE public."Booking"
          SET status = 'cancelled'
-         WHERE teacher_id = $1 
+         WHERE user_id = $1 
          AND date >= CURRENT_DATE 
          AND status IN ('pending', 'approved')`,
         [user_id]

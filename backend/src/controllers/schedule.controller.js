@@ -240,7 +240,7 @@ export const importClassSchedules = async (req, res) => {
                         u.name, 
                         u.surname
                      FROM public."Booking" b
-                     LEFT JOIN public."Users" u ON b.teacher_id = u.user_id
+                     LEFT JOIN public."Users" u ON b.user_id = u.user_id
                      WHERE b.room_id = $1 
                      AND b.date = $2 
                      AND b.status IN ('pending', 'approved') 
@@ -312,7 +312,7 @@ export const importClassSchedules = async (req, res) => {
                   end_time: endTime,
                   semester_id: semesterId,
                   temporarily_closed: false,
-                  teacher_id: teacherId,
+                  user_id: teacherId,
                   date: targetDate,
                   sec: sec,
                   dateCreate: dateCreate,
@@ -418,7 +418,7 @@ const insertScheduleToDB = async (client, data) => {
 
   await client.query(
     `INSERT INTO public."Schedules" 
-     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, teacher_id, sec, unique_schedules)
+     (schedule_id, room_id, subject_name, teacher_name, teacher_surname, start_time, end_time, semester_id, date, temporarily_closed, user_id, sec, unique_schedules)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       scheduleId,
@@ -431,7 +431,7 @@ const insertScheduleToDB = async (client, data) => {
       data.semester_id,
       data.date,
       data.temporarily_closed,
-      data.teacher_id,
+      data.user_id,
       data.sec,
       data.uniqueSchedules 
     ]
@@ -457,7 +457,7 @@ export const getSchedule = async (req, res) => {
         semester_id, 
         date,
         temporarily_closed,  -- ✅ 1. ต้อง SELECT ออกมาด้วย
-        teacher_id           -- (แถม) ควรดึงออกมาด้วย เพื่อให้ Frontend เช็คสิทธิ์ได้
+        user_id           -- (แถม) ควรดึงออกมาด้วย เพื่อให้ Frontend เช็คสิทธิ์ได้
       FROM public."Schedules"
       WHERE room_id = $1
     `;
@@ -519,7 +519,7 @@ export const getAllSchedules = async (req, res) => {
         semester_id, 
         date,
         temporarily_closed, 
-        teacher_id
+        user_id
       FROM public."Schedules"
     `;
     
@@ -585,10 +585,10 @@ export const updateScheduleStatus = async (req, res) => {
     
     const params = [temporarily_closed, id];
 
-    // ถ้า "ไม่ใช่ staff" ต้องเช็คว่า teacher_id ตรงกับ user_id ไหม
-    // (สมมติว่าในตาราง Schedules มีคอลัมน์ชื่อ teacher_id นะครับ)
+    // ถ้า "ไม่ใช่ staff" ต้องเช็คว่า user_id ตรงกับ user_id ไหม
+    // (สมมติว่าในตาราง Schedules มีคอลัมน์ชื่อ user_id นะครับ)
     if (role.toLowerCase().trim() !== 'staff') {
-        sql += ` AND teacher_id = $3`; 
+        sql += ` AND user_id = $3`; 
         params.push(user_id);
     }
 
@@ -956,7 +956,7 @@ export const reuploadScheduleFile = async (req, res) => {
                   end_time: endTime,
                   semester_id: semesterId,
                   temporarily_closed: false,
-                  teacher_id: teacherId,
+                  user_id: teacherId,
                   date: targetDate,
                   sec: sec,
                   dateCreate: dateCreate,
@@ -1008,7 +1008,6 @@ export const reuploadScheduleFile = async (req, res) => {
 };
 
 export const exportTermReport = async (req, res) => {
-  // รับช่วงเวลาของ 1 เทอมมาจาก Frontend (เช่น 2026-06-01 ถึง 2026-10-31)
   const { startDate, endDate } = req.query; 
 
   if (!startDate || !endDate) {
@@ -1016,29 +1015,49 @@ export const exportTermReport = async (req, res) => {
   }
 
   try {
-    // 📊 1. Query ข้อมูลการจอง (Booking) ในช่วงเวลาของเทอม
+    // ==========================================
+    // 📊 1. Query ข้อมูลการจอง (Booking)
+    // ==========================================
     const bookingResult = await pool.query(
-      `SELECT booking_id, purpose, room_id, date, start_time, end_time, status 
-       FROM public."Booking" 
-       WHERE date >= $1 AND date <= $2
-       ORDER BY date ASC, start_time ASC`,
+      `SELECT 
+         b.room_id, 
+         CONCAT(u.name, ' ', u.surname) AS booker_name, 
+         b.purpose, 
+         b.start_time, 
+         b.end_time, 
+         b.date, 
+         CASE 
+           WHEN a.name IS NOT NULL AND a.name != '' THEN CONCAT(a.name, ' ', a.surname)
+           ELSE b.approved_by 
+         END AS approver_name
+       FROM public."Booking" b
+       LEFT JOIN public."Users" u ON b.user_id = u.user_id         
+       LEFT JOIN public."Users" a ON b.approved_by = a.user_id     
+       WHERE b.date >= $1 AND b.date <= $2
+       ORDER BY b.date ASC, b.start_time ASC`,
       [startDate, endDate]
     );
 
-    // 📚 2. Query ข้อมูลตารางเรียน (Schedules) ในช่วงเวลาของเทอม
-    // 💡 อัปเดต: ดึง sec และใช้ CONCAT รวมชื่อ-นามสกุลเป็น full_name
+    // ==========================================
+    // 📚 2. Query ข้อมูลตารางเรียน + JOIN หาข้อมูลสาขา
+    // ==========================================
     const scheduleResult = await pool.query(
       `SELECT 
-         room_id, 
-         CONCAT(teacher_name, ' ', teacher_surname) AS full_name,
-         subject_name, 
-         start_time, 
-         end_time, 
-         date, 
-         sec
-       FROM public."Schedules" 
-       WHERE date >= $1 AND date <= $2
-       ORDER BY date ASC, start_time ASC`,
+         s.room_id, 
+         CONCAT(s.teacher_name, ' ', s.teacher_surname) AS full_name,
+         s.subject_name, 
+         s.start_time, 
+         s.end_time, 
+         s.date, 
+         s.sec,
+         s.unique_schedules,
+         ds.department,
+         ds.study_year,
+         ds.program_type
+       FROM public."Schedules" s
+       LEFT JOIN public."DetailSchedules" ds ON s.unique_schedules = ds.unique_schedules
+       WHERE s.date >= $1 AND s.date <= $2
+       ORDER BY s.date ASC, s.start_time ASC`,
       [startDate, endDate]
     );
 
@@ -1048,44 +1067,81 @@ export const exportTermReport = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'KUSRC Room Booking System';
 
-    // ---- Sheet ที่ 1: ประวัติการจอง ----
+    // ---- Sheet ที่ 1: ประวัติการจอง (Bookings) - มีแค่ Sheet เดียว ----
     const bookingSheet = workbook.addWorksheet('ประวัติการจอง (Bookings)');
     bookingSheet.columns = [
-      { header: 'รหัสการจอง', key: 'booking_id', width: 20 },
       { header: 'ห้อง', key: 'room_id', width: 15 },
-      { header: 'หัวข้อ/เหตุผล', key: 'purpose', width: 30 },
-      { header: 'วันที่', key: 'date', width: 15 },
-      { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
-      { header: 'เวลาจบ', key: 'end_time', width: 15 },
-      { header: 'สถานะ', key: 'status', width: 15 }
-    ];
-    // แต่งสี Header ให้สวยงาม (Optional)
-    bookingSheet.getRow(1).font = { bold: true };
-    // ยัดข้อมูลจาก Database ลง Sheet
-    bookingSheet.addRows(bookingResult.rows);
-
-
-    // ---- Sheet ที่ 2: ตารางเรียน ----
-    const scheduleSheet = workbook.addWorksheet('ตารางเรียน (Schedules)');
-    
-    // 💡 อัปเดต: เปลี่ยน Header และ Key ตามโครงสร้างใหม่
-    scheduleSheet.columns = [
-      { header: 'ห้อง', key: 'room_id', width: 15 },
-      { header: 'ผู้จอง', key: 'full_name', width: 30 }, // รับค่ามาจาก CONCAT
-      { header: 'รายวิชา', key: 'subject_name', width: 35 },
+      { header: 'ผู้จอง', key: 'booker_name', width: 30 }, 
+      { header: 'เหตุผลการขอจอง', key: 'purpose', width: 35 },
       { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
       { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
       { header: 'วันที่', key: 'date', width: 15 },
-      { header: 'SEC', key: 'sec', width: 10 }
+      { header: 'อนุมัติโดย', key: 'approver_name', width: 25 } 
     ];
+    bookingSheet.getRow(1).font = { bold: true };
+    bookingSheet.addRows(bookingResult.rows);
+
+
+    // ---- Sheet ที่ 2 เป็นต้นไป: ตารางเรียน (แยกตามสาขาและชั้นปี) ----
     
-    scheduleSheet.getRow(1).font = { bold: true };
-    scheduleSheet.addRows(scheduleResult.rows);
+    // 1. จัดกลุ่มข้อมูลตาม unique_schedules ก่อน
+    const scheduleGroups = {};
+
+    scheduleResult.rows.forEach(row => {
+      const key = row.unique_schedules || 'Unknown';
+      
+      if (!scheduleGroups[key]) {
+        let rawSheetName = 'ตารางเรียน';
+        if (row.department) {
+            // 💡 อัปเดต: ใช้ Format ใหม่ตามที่คุณพงศ์ภัคต้องการเป๊ะๆ ครับ
+            rawSheetName = `${row.department} ปี ${row.study_year} ภาค ${row.program_type}`;
+        }
+
+        // 🛡️ เซฟตี้: ตัดให้เหลือ 31 ตัวอักษรพอดีเป๊ะ (ถ้าเป็นวิทย์คอม จะถูกตัดเหลือ "วิทยาการคอมพิวเตอร์ ปี 3 ภาค ป")
+        let safeSheetName = rawSheetName.length > 31 
+          ? rawSheetName.substring(0, 31) 
+          : rawSheetName;
+        
+        // เช็คว่าชื่อ Sheet ซ้ำกันไหม (ป้องกันกรณีชื่อโดนตัดแล้วไปซ้ำกับสาขาอื่น)
+        let counter = 1;
+        let finalSheetName = safeSheetName;
+        while (workbook.getWorksheet(finalSheetName)) {
+           // ถ้าซ้ำ จะเติม (1), (2) ต่อท้าย และหั่นชื่อเดิมลงอีกนิดให้พอดี 31 ตัว
+           finalSheetName = `${safeSheetName.substring(0, 27)} (${counter})`;
+           counter++;
+        }
+
+        scheduleGroups[key] = {
+          sheetName: finalSheetName,
+          rows: []
+        };
+      }
+      // ดันข้อมูลใส่กลุ่ม
+      scheduleGroups[key].rows.push(row);
+    });
+
+    // 2. วนลูปสร้าง Sheet ตามกลุ่มที่แยกไว้
+    for (const groupKey in scheduleGroups) {
+      const groupData = scheduleGroups[groupKey];
+      const scheduleSheet = workbook.addWorksheet(groupData.sheetName);
+      
+      scheduleSheet.columns = [
+        { header: 'ห้อง', key: 'room_id', width: 15 },
+        { header: 'ผู้จอง', key: 'full_name', width: 30 },
+        { header: 'รายวิชา', key: 'subject_name', width: 35 },
+        { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
+        { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
+        { header: 'วันที่', key: 'date', width: 15 },
+        { header: 'SEC', key: 'sec', width: 10 }
+      ];
+      
+      scheduleSheet.getRow(1).font = { bold: true };
+      scheduleSheet.addRows(groupData.rows);
+    }
 
     // ==========================================
     // 🚀 4. ส่งไฟล์กลับไปให้เบราว์เซอร์ดาวน์โหลด
     // ==========================================
-    // ตั้งค่า Header ของ HTTP Response เพื่อบังคับให้เบราว์เซอร์รู้ว่านี่คือการดาวน์โหลดไฟล์ Excel
     res.setHeader(
       'Content-Type', 
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -1095,9 +1151,8 @@ export const exportTermReport = async (req, res) => {
       `attachment; filename=Room_Usage_Report_${startDate}_to_${endDate}.xlsx`
     );
 
-    // เขียนข้อมูลลง Response แล้วส่งออกไป
     await workbook.xlsx.write(res);
-    res.end(); // ปิดการเชื่อมต่อ
+    res.end();
 
   } catch (error) {
     console.error('Export Excel Error:', error);

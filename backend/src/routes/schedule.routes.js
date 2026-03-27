@@ -23,6 +23,20 @@ const router = express.Router();
 router.get('/export-excel', exportTermReport);
 
 // ==========================================
+// 🚏 Routes สำหรับจัดการประวัติตารางเรียน
+// ==========================================
+
+// 1. GET: ดึงข้อมูลประวัติตารางเรียน (DetailSchedules) ไปแสดงผล
+router.get('/allScheduleLog', getScheduleLog);
+
+// 2. PUT: แก้ไขข้อมูล Header (ภาควิชา, ชั้นปี, โครงการ)
+router.put('/:id', editScheduleLog);
+
+// 3. DELETE: ลบข้อมูลตารางเรียน (แม่และลูก) ทิ้งทั้งหมด
+router.delete('/:id', deleteScheduleLog);
+
+
+// ==========================================
 // 📦 ตั้งค่า Multer สำหรับรับไฟล์ Excel
 // ==========================================
 // เก็บไฟล์ไว้ใน Memory (Buffer) เพื่อส่งให้ ExcelJS อ่านได้ทันทีโดยไม่ต้องเซฟลงเครื่อง
@@ -617,35 +631,15 @@ router.get('/', getAllSchedules)
 router.patch('/:id/status', authenticateToken, authorizeRole('teacher', 'staff'), updateScheduleStatus);
 
 
-
-// ==========================================
-// 🚏 Routes สำหรับจัดการประวัติตารางเรียน
-// ==========================================
-
-// 1. GET: ดึงข้อมูลประวัติตารางเรียน (DetailSchedules) ไปแสดงผล
-// 🟢 API: GET /api/schedule-logs
-router.get('/allScheduleLog', getScheduleLog);
-
-// 2. PUT: แก้ไขข้อมูล Header (ภาควิชา, ชั้นปี, โครงการ)
-// 🟠 API: PUT /api/schedule-logs/:id
-router.put('/:id', editScheduleLog);
-
-// 3. DELETE: ลบข้อมูลตารางเรียน (แม่และลูก) ทิ้งทั้งหมด
-// 🔴 API: DELETE /api/schedule-logs/:id
-router.delete('/:id', deleteScheduleLog);
-
-
 // ==========================================
 // 🔄 Routes สำหรับอัปเดต/เขียนทับไฟล์ Excel
 // ==========================================
 
 // 4. POST: อัปโหลดไฟล์ Excel ใหม่เพื่อ Preview (ใช้ข้อมูล Header เดิม)
-// 🟡 API: POST /api/schedule-logs/reupload/:id
 // ⚠️ ต้องมี upload.single('file') ดักไว้ เพื่อรับไฟล์จาก Frontend ที่แนบมากับชื่อ 'file'
 router.post('/reupload/:id', upload.single('file'), reuploadScheduleFile);
 
 // 5. PUT: ยืนยันการบันทึก (ลบข้อมูลคาบเรียนเก่าทิ้ง และ Insert ของใหม่ลงไป)
-// 🟠 API: PUT /api/schedule-logs/reconfirm/:id
 router.put('/reconfirm/:id', confirmReuploadSchedules);
 
 

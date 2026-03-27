@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { pool } from '../config/db.js';
 
 export const startCleanupJob = () => {
-
+  
   // ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
     console.log('🧹 Running OTP Cleanup Job...');
