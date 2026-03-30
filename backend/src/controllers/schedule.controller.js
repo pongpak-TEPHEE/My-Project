@@ -364,19 +364,49 @@ export const importClassSchedules = async (req, res) => {
 // สาเหตุการที่ต้องมีการ confirm เพราะก่อนที่จะเอาข้อมูลลง database ต้องตรวจดูว่ามีการชนกับข้อมูลการจองอื่นๆไหม รับได้ไหมก่อนจะเอาเข้าฐานข้อมูล
 export const confirmSchedules = async (req, res) => {
   // รับข้อมูลเป็น Array จาก Frontend
-  // body: { schedules: [ { room_id: '...', ... }, { ... } ] }
   const { schedules } = req.body;
 
   if (!schedules || schedules.length === 0) {
     return res.status(400).json({ message: 'ไม่มีข้อมูลที่จะบันทึก' });
   }
 
-  const client = await pool.connect(); // ใช้ Client เพื่อทำ Transaction (ปลอดภัยกว่า)
+  // ดึงข้อมูล Header จากรายการแรกสุดออกมาเตรียมไว้
+  const { uniqueSchedules, dateCreate, department, study_year, program_type } = schedules[0];
+
+  // ==========================================
+  // 🛡️ เช็คข้อมูลซ้ำ: ป้องกันการอัปโหลดสาขาและชั้นปีที่เคยมีแล้ว
+  // ==========================================
+  try {
+    const checkDuplicateQuery = `
+      SELECT unique_schedules 
+      FROM public."DetailSchedules" 
+      WHERE department = $1 
+        AND study_year = $2 
+        AND program_type = $3
+    `;
+    // 💡 สังเกตว่าไม่ต้องมีเงื่อนไข != id เหมือนตอน Edit เพราะนี่คือการสร้างใหม่
+    const duplicateCheck = await pool.query(checkDuplicateQuery, [department, study_year, program_type]);
+
+    if (duplicateCheck.rowCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `ไม่อนุญาตให้บันทึก: มีตารางเรียนของสาขา "${department}" ปี ${study_year} ภาค ${program_type} อยู่ในระบบแล้ว (กรุณาใช้เมนู 'อัปโหลดไฟล์ใหม่' ทับของเดิมแทน)`
+      });
+    }
+  } catch (error) {
+    console.error('Check Duplicate Error:', error);
+    return res.status(500).json({ message: 'เกิดข้อผิดพลาดในการตรวจสอบข้อมูลซ้ำ' });
+  }
+
+
+  // ==========================================
+  // 💾 ผ่านด่านเช็คซ้ำแล้ว เริ่มกระบวนการบันทึกลง Database
+  // ==========================================
+  const client = await pool.connect(); // ใช้ Client เพื่อทำ Transaction
 
   try {
-    await client.query('BEGIN'); // เริ่ม Transaction (ถ้าพัง ให้ยกเลิกทั้งหมด)
+    await client.query('BEGIN'); // เริ่ม Transaction 
 
-    const { uniqueSchedules, dateCreate, department, study_year, program_type } = schedules[0];
     await client.query(
       `INSERT INTO public."DetailSchedules" 
       (unique_schedules, date_create, department, study_year, program_type)
@@ -384,15 +414,16 @@ export const confirmSchedules = async (req, res) => {
       [uniqueSchedules, dateCreate, department, study_year, program_type]
     );
 
-    console.log(`💾 กำลังบันทึก ${schedules.length} รายการ...`);
+    console.log(`💾 กำลังบันทึก ${schedules.length} รายการ สำหรับสาขา ${department}...`);
 
     for (const schedule of schedules) {
       await insertScheduleToDB(client, schedule); 
     }
 
-    await client.query('COMMIT'); // บันทึกจริงเมื่อทำครบทุกรายการ
+    await client.query('COMMIT'); // บันทึกจริง
     
     res.json({ 
+      success: true, // เพิ่มตัวแปร success ให้ฝั่ง Frontend เช็คง่ายๆ
       message: 'บันทึกข้อมูลทั้งหมดสำเร็จ', 
       totalSaved: schedules.length 
     });
@@ -667,6 +698,31 @@ export const editScheduleLog = async (req, res) => {
   }
 
   try {
+    // ==========================================
+    // 🛡️ เช็คข้อมูลซ้ำ: มีตารางนี้อยู่ในระบบแล้วหรือยัง?
+    // ==========================================
+    const checkDuplicateQuery = `
+      SELECT unique_schedules 
+      FROM public."DetailSchedules" 
+      WHERE department = $1 
+        AND study_year = $2 
+        AND program_type = $3 
+        AND unique_schedules != $4 -- 👈 สำคัญ: ต้องไม่เช็คซ้ำกับ ID ของตัวเอง
+    `;
+    const checkValues = [department, study_year, program_type, id];
+    const duplicateCheck = await pool.query(checkDuplicateQuery, checkValues);
+
+    // ถ้าเจอว่ามีข้อมูลตรงกันทุกอย่าง (rowCount > 0) ให้ดีดกลับทันที
+    if (duplicateCheck.rowCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `มีตารางเรียนของสาขา "${department}" ปี ${study_year} ภาค ${program_type} อยู่ในระบบแล้ว กรุณาตรวจสอบอีกครั้ง`
+      });
+    }
+
+    // ==========================================
+    // 💾 เริ่มอัปเดตข้อมูลจริง
+    // ==========================================
     // คำสั่ง SQL สำหรับอัปเดตข้อมูล และใช้ RETURNING * เพื่อขอดูข้อมูลใหม่ที่เพิ่งแก้เสร็จ
     const query = `
       UPDATE public."DetailSchedules"
@@ -677,9 +733,8 @@ export const editScheduleLog = async (req, res) => {
       RETURNING *
     `;
 
-    // เรียงลำดับตัวแปรให้ตรงกับ $1, $2, $3, $4 เป๊ะๆ (ป้องกัน Error ที่เราเคยเจอครับ 😉)
+    // เรียงลำดับตัวแปรให้ตรงกับ $1, $2, $3, $4 เป๊ะๆ
     const values = [department, study_year, program_type, id];
-
     const result = await pool.query(query, values);
 
     // ถ้า rowCount เป็น 0 แปลว่าหา ID นี้ไม่เจอใน Database
@@ -690,7 +745,7 @@ export const editScheduleLog = async (req, res) => {
       });
     }
 
-    // ส่งผลลัพธ์กลับไปบอก Frontend ว่าแก้เสร็จแล้ว พร้อมแนบข้อมูลใหม่ไปให้ดูด้วย
+    // ส่งผลลัพธ์กลับไปบอก Frontend ว่าแก้เสร็จแล้ว
     res.status(200).json({
       success: true,
       message: 'แก้ไขข้อมูลรายละเอียดตารางเรียนสำเร็จ',
@@ -738,6 +793,7 @@ export const deleteScheduleLog = async (req, res) => {
     });
   }
 };
+
 
 export const confirmReuploadSchedules = async (req, res) => {
   const { id } = req.params; // รับ unique_schedules เดิมมาจาก URL
@@ -789,6 +845,7 @@ export const confirmReuploadSchedules = async (req, res) => {
     client.release();
   }
 };
+
 
 export const reuploadScheduleFile = async (req, res) => {
   // 1. รับ ID ตารางแม่เดิม (unique_schedules) จาก URL (เช่น PUT /api/schedules/reupload/sch_1234)
@@ -1007,6 +1064,15 @@ export const reuploadScheduleFile = async (req, res) => {
   }
 };
 
+
+// ⏱️ ฟังก์ชันตัวช่วย: คำนวณหาจำนวนชั่วโมงจากเวลา (เช่น 08:30:00 ถึง 10:00:00 = 1.5 ชม.)
+const calculateHours = (startTime, endTime) => {
+  if (!startTime || !endTime) return 0;
+  const [startH, startM] = startTime.split(':').map(Number);
+  const [endH, endM] = endTime.split(':').map(Number);
+  return (endH + endM / 60) - (startH + startM / 60);
+};
+
 export const exportTermReport = async (req, res) => {
   const { startDate, endDate } = req.query; 
 
@@ -1016,7 +1082,7 @@ export const exportTermReport = async (req, res) => {
 
   try {
     // ==========================================
-    // 📊 1. Query ข้อมูลการจอง (Booking)
+    // 📊 1. Query ข้อมูลการจอง (Booking) + ดึง b.status กลับมา
     // ==========================================
     const bookingResult = await pool.query(
       `SELECT 
@@ -1026,6 +1092,7 @@ export const exportTermReport = async (req, res) => {
          b.start_time, 
          b.end_time, 
          b.date, 
+         b.status, 
          CASE 
            WHEN a.name IS NOT NULL AND a.name != '' THEN CONCAT(a.name, ' ', a.surname)
            ELSE b.approved_by 
@@ -1039,7 +1106,7 @@ export const exportTermReport = async (req, res) => {
     );
 
     // ==========================================
-    // 📚 2. Query ข้อมูลตารางเรียน + JOIN หาข้อมูลสาขา
+    // 📚 2. Query ข้อมูลตารางเรียน (Schedules)
     // ==========================================
     const scheduleResult = await pool.query(
       `SELECT 
@@ -1062,12 +1129,115 @@ export const exportTermReport = async (req, res) => {
     );
 
     // ==========================================
-    // 📝 3. สร้างไฟล์ Excel ด้วย exceljs
+    // 🧠 3. คำนวณข้อมูลสำหรับ Dashboard
+    // ==========================================
+    // คำนวณจำนวนสัปดาห์ในเทอมนั้น (เพื่อหาค่าเฉลี่ย)
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffDays = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+    const totalWeeks = Math.max(1, Math.ceil(diffDays / 7));
+
+    // ตัวแปรเก็บสถิติ
+    const roomStats = {};
+    const teacherStats = {};
+    const statusStats = { approved: 0, pending: 0, cancelled: 0, rejected: 0 };
+    const purposeStats = {};
+
+    // 3.1 สรุปข้อมูลจากการจอง (เอาเฉพาะที่ไม่ได้ยกเลิก/ปฏิเสธ มาคิดชั่วโมง)
+    bookingResult.rows.forEach(b => {
+      const hrs = calculateHours(b.start_time, b.end_time);
+      const stat = b.status ? b.status.toLowerCase() : 'unknown';
+      
+      // นับสถานะทั้งหมด (ทำ Success Rate)
+      if (statusStats[stat] !== undefined) statusStats[stat]++;
+      else statusStats[stat] = 1;
+
+      // ถ้าอนุมัติหรือใช้งานแล้ว ถึงจะนำมาบวกชั่วโมง
+      if (stat === 'approved' || stat === 'completed') {
+        const room = b.room_id || 'ไม่ระบุ';
+        const booker = b.booker_name || 'ไม่ระบุ';
+        const purpose = b.purpose || 'ไม่มีเหตุผล';
+
+        roomStats[room] = (roomStats[room] || 0) + hrs;
+        teacherStats[booker] = (teacherStats[booker] || 0) + hrs;
+        purposeStats[purpose] = (purposeStats[purpose] || 0) + hrs;
+      }
+    });
+
+    // 3.2 สรุปข้อมูลจากตารางเรียน (Schedules ถือว่าเป็นการใช้งาน 100%)
+    scheduleResult.rows.forEach(s => {
+      const hrs = calculateHours(s.start_time, s.end_time);
+      const room = s.room_id || 'ไม่ระบุ';
+      const teacher = s.full_name || 'ไม่ระบุ';
+
+      roomStats[room] = (roomStats[room] || 0) + hrs;
+      teacherStats[teacher] = (teacherStats[teacher] || 0) + hrs;
+    });
+
+    // ==========================================
+    // 📝 4. สร้างไฟล์ Excel และ Sheet ต่างๆ
     // ==========================================
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'KUSRC Room Booking System';
 
-    // ---- Sheet ที่ 1: ประวัติการจอง (Bookings) - มีแค่ Sheet เดียว ----
+    // 🏆 ---- Sheet 1: Dashboard สรุปข้อมูล (สร้างเป็น Sheet แรกสุด!) ----
+    const summarySheet = workbook.addWorksheet('สรุปข้อมูล (Dashboard)');
+    summarySheet.getColumn('A').width = 40;
+    summarySheet.getColumn('B').width = 25;
+    summarySheet.getColumn('C').width = 25;
+
+    // ส่วนหัวรายงาน
+    const titleRow = summarySheet.addRow(['📊 สรุปรายงานการใช้งานห้องเรียนและตารางสอน']);
+    titleRow.font = { size: 16, bold: true };
+    summarySheet.addRow(['ช่วงเวลาที่วิเคราะห์:', `${startDate} ถึง ${endDate}`]);
+    summarySheet.addRow(['จำนวนสัปดาห์ในระบบ:', `${totalWeeks} สัปดาห์`]);
+    summarySheet.addRow([]);
+
+    // Section 1: สถิติห้อง (Room Stats)
+    const header1 = summarySheet.addRow(['🏠 สถิติการใช้งานรายห้อง (รวมคาบเรียนและจองพิเศษ)']);
+    header1.font = { bold: true, color: { argb: 'FF0000FF' } }; // สีน้ำเงิน
+    summarySheet.addRow(['ชื่อห้อง', 'ชั่วโมงรวมตลอดเทอม', 'เฉลี่ยต่อสัปดาห์']).font = { bold: true };
+    
+    // เรียงลำดับห้องที่ใช้เยอะสุดไปน้อยสุด
+    Object.entries(roomStats)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([room, hrs]) => {
+        summarySheet.addRow([room, `${hrs.toFixed(2)} ชม.`, `${(hrs / totalWeeks).toFixed(2)} ชม./สัปดาห์`]);
+      });
+    summarySheet.addRow([]);
+
+    // Section 2: สถิติบุคคล (Teacher Stats)
+    const header2 = summarySheet.addRow(['👨‍🏫 สถิติการจองและสอนของอาจารย์/บุคลากร (Top 10)']);
+    header2.font = { bold: true, color: { argb: 'FF008000' } }; // สีเขียว
+    summarySheet.addRow(['ชื่อ-นามสกุล', 'ชั่วโมงรวม', '']).font = { bold: true };
+    
+    Object.entries(teacherStats)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10) // เอาแค่ Top 10
+      .forEach(([name, hrs]) => {
+        summarySheet.addRow([name, `${hrs.toFixed(2)} ชม.`, '']);
+      });
+    summarySheet.addRow([]);
+
+    // Section 3: สถิติสถานะ และ จุดประสงค์
+    const header3 = summarySheet.addRow(['📈 สถิติการดำเนินการจอง และ จุดประสงค์ยอดฮิต']);
+    header3.font = { bold: true, color: { argb: 'FFE65C00' } }; // สีส้ม
+    summarySheet.addRow(['สถานะการจอง', 'จำนวนครั้ง', '']).font = { bold: true };
+    summarySheet.addRow(['อนุมัติ (Approved / Completed)', `${(statusStats['approved'] || 0) + (statusStats['completed'] || 0)} ครั้ง`, '']);
+    summarySheet.addRow(['รออนุมัติ (Pending)', `${statusStats['pending'] || 0} ครั้ง`, '']);
+    summarySheet.addRow(['ยกเลิก/ปฏิเสธ (Cancelled / Rejected)', `${(statusStats['cancelled'] || 0) + (statusStats['rejected'] || 0)} ครั้ง`, '']);
+    
+    summarySheet.addRow([]);
+    summarySheet.addRow(['จุดประสงค์การจองห้อง (Top 5)', 'ชั่วโมงรวม', '']).font = { bold: true };
+    Object.entries(purposeStats)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .forEach(([purpose, hrs]) => {
+        summarySheet.addRow([purpose, `${hrs.toFixed(2)} ชม.`, '']);
+      });
+
+
+    // 🗓️ ---- Sheet 2: ประวัติการจอง (Bookings) ----
     const bookingSheet = workbook.addWorksheet('ประวัติการจอง (Bookings)');
     bookingSheet.columns = [
       { header: 'ห้อง', key: 'room_id', width: 15 },
@@ -1076,58 +1246,42 @@ export const exportTermReport = async (req, res) => {
       { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
       { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
       { header: 'วันที่', key: 'date', width: 15 },
+      { header: 'สถานะ', key: 'status', width: 15 }, // เพิ่มสถานะให้ด้วยเพื่อความชัดเจน
       { header: 'อนุมัติโดย', key: 'approver_name', width: 25 } 
     ];
     bookingSheet.getRow(1).font = { bold: true };
     bookingSheet.addRows(bookingResult.rows);
 
 
-    // ---- Sheet ที่ 2 เป็นต้นไป: ตารางเรียน (แยกตามสาขาและชั้นปี) ----
-    
-    // 1. จัดกลุ่มข้อมูลตาม unique_schedules ก่อน
+    // 📚 ---- Sheet 3 เป็นต้นไป: ตารางเรียน (แยกตามสาขา) ----
     const scheduleGroups = {};
-
     scheduleResult.rows.forEach(row => {
       const key = row.unique_schedules || 'Unknown';
-      
       if (!scheduleGroups[key]) {
         let rawSheetName = 'ตารางเรียน';
         if (row.department) {
-            // 💡 อัปเดต: ใช้ Format ใหม่ตามที่คุณพงศ์ภัคต้องการเป๊ะๆ ครับ
             rawSheetName = `${row.department} ปี ${row.study_year} ภาค ${row.program_type}`;
         }
-
-        // 🛡️ เซฟตี้: ตัดให้เหลือ 31 ตัวอักษรพอดีเป๊ะ (ถ้าเป็นวิทย์คอม จะถูกตัดเหลือ "วิทยาการคอมพิวเตอร์ ปี 3 ภาค ป")
-        let safeSheetName = rawSheetName.length > 31 
-          ? rawSheetName.substring(0, 31) 
-          : rawSheetName;
+        let safeSheetName = rawSheetName.length > 31 ? rawSheetName.substring(0, 31) : rawSheetName;
         
-        // เช็คว่าชื่อ Sheet ซ้ำกันไหม (ป้องกันกรณีชื่อโดนตัดแล้วไปซ้ำกับสาขาอื่น)
         let counter = 1;
         let finalSheetName = safeSheetName;
         while (workbook.getWorksheet(finalSheetName)) {
-           // ถ้าซ้ำ จะเติม (1), (2) ต่อท้าย และหั่นชื่อเดิมลงอีกนิดให้พอดี 31 ตัว
            finalSheetName = `${safeSheetName.substring(0, 27)} (${counter})`;
            counter++;
         }
-
-        scheduleGroups[key] = {
-          sheetName: finalSheetName,
-          rows: []
-        };
+        scheduleGroups[key] = { sheetName: finalSheetName, rows: [] };
       }
-      // ดันข้อมูลใส่กลุ่ม
       scheduleGroups[key].rows.push(row);
     });
 
-    // 2. วนลูปสร้าง Sheet ตามกลุ่มที่แยกไว้
     for (const groupKey in scheduleGroups) {
       const groupData = scheduleGroups[groupKey];
       const scheduleSheet = workbook.addWorksheet(groupData.sheetName);
       
       scheduleSheet.columns = [
         { header: 'ห้อง', key: 'room_id', width: 15 },
-        { header: 'ผู้จอง', key: 'full_name', width: 30 },
+        { header: 'อาจารย์ผู้สอน', key: 'full_name', width: 30 },
         { header: 'รายวิชา', key: 'subject_name', width: 35 },
         { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
         { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
@@ -1140,16 +1294,10 @@ export const exportTermReport = async (req, res) => {
     }
 
     // ==========================================
-    // 🚀 4. ส่งไฟล์กลับไปให้เบราว์เซอร์ดาวน์โหลด
+    // 🚀 5. ส่งไฟล์กลับไปให้ดาวน์โหลด
     // ==========================================
-    res.setHeader(
-      'Content-Type', 
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    );
-    res.setHeader(
-      'Content-Disposition', 
-      `attachment; filename=Room_Usage_Report_${startDate}_to_${endDate}.xlsx`
-    );
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=Room_Usage_Report_${startDate}_to_${endDate}.xlsx`);
 
     await workbook.xlsx.write(res);
     res.end();

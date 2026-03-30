@@ -27,13 +27,13 @@ router.get('/export-excel', exportTermReport);
 // ==========================================
 
 // 1. GET: ดึงข้อมูลประวัติตารางเรียน (DetailSchedules) ไปแสดงผล
-router.get('/allScheduleLog', getScheduleLog);
+router.get('/allScheduleLog', authenticateToken, authorizeRole('staff'), getScheduleLog);
 
 // 2. PUT: แก้ไขข้อมูล Header (ภาควิชา, ชั้นปี, โครงการ)
-router.put('/:id', editScheduleLog);
+router.put('/:id', authenticateToken, authorizeRole('staff'), editScheduleLog);
 
 // 3. DELETE: ลบข้อมูลตารางเรียน (แม่และลูก) ทิ้งทั้งหมด
-router.delete('/:id', deleteScheduleLog);
+router.delete('/:id', authenticateToken, authorizeRole('staff'), deleteScheduleLog);
 
 
 // ==========================================
@@ -345,7 +345,7 @@ router.post('/import', authenticateToken, authorizeRole('staff'), handleExcelUpl
  *               message: "เกิดข้อผิดพลาดในการบันทึกข้อมูล"
  *               error: "รายละเอียด error message จากระบบ"
  */
-router.post('/confirm', authenticateToken, authorizeRole('admin', 'staff'), confirmSchedules);
+router.post('/confirm', authenticateToken, authorizeRole('staff'), confirmSchedules);
 
 // ดึงข้อมูลที่เก็บไว้ใน table schedule ไปแสดงผลในตาราง
 /**
@@ -637,10 +637,10 @@ router.patch('/:id/status', authenticateToken, authorizeRole('teacher', 'staff')
 
 // 4. POST: อัปโหลดไฟล์ Excel ใหม่เพื่อ Preview (ใช้ข้อมูล Header เดิม)
 // ⚠️ ต้องมี upload.single('file') ดักไว้ เพื่อรับไฟล์จาก Frontend ที่แนบมากับชื่อ 'file'
-router.post('/reupload/:id', upload.single('file'), reuploadScheduleFile);
+router.post('/reupload/:id', authenticateToken, authorizeRole('staff'), upload.single('file'), reuploadScheduleFile);
 
 // 5. PUT: ยืนยันการบันทึก (ลบข้อมูลคาบเรียนเก่าทิ้ง และ Insert ของใหม่ลงไป)
-router.put('/reconfirm/:id', confirmReuploadSchedules);
+router.put('/reconfirm/:id', authenticateToken, authorizeRole('staff'), confirmReuploadSchedules);
 
 
 
