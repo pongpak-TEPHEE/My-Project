@@ -8,7 +8,7 @@ export const getRoomScheduleToday = async (req, res) => {
   const { room_id } = req.params;
 
   try {
-    // ดึงข้อมูลห้อง และเช็ค is_active
+    // 1. ดึงข้อมูลห้อง และเช็ค is_active
     const roomResult = await pool.query(
       `SELECT room_id, room_type, location, capacity, is_active 
        FROM public."Rooms" 
@@ -26,73 +26,80 @@ export const getRoomScheduleToday = async (req, res) => {
     if (room.is_active === false) {
       return res.json({
         room,
-        status: 'closed',     // ส่งสถานะไปบอก Frontend
+        status: 'closed',
         status_text: 'งดให้บริการ ณ ขณะนี้',
-        schedule: []          // ไม่ส่งตารางจองไป
+        schedule: []
       });
     }
 
-    // ดึงตารางการใช้ห้อง "วันนี้" (รวม Booking และ Class Schedule)
-    // เราจะดึงข้อมูล 2 ตารางพร้อมกัน เพื่อความแม่นยำและได้ข้อมูลครบถ่วน
-
-    // ดึง Booking
+    // 2. ดึงตารางการใช้ห้อง "วันนี้" (Booking + Schedules)
     const bookingQuery = pool.query(
       `SELECT booking_id as id, start_time, end_time, purpose as title, 'booking' as type
        FROM public."Booking"
        WHERE room_id = $1 
        AND date = CURRENT_DATE 
-       AND status = 'approved' -- เฉพาะที่อนุมัติแล้ว`,
+       AND status = 'approved'`,
       [room_id]
     );
 
-    // ดึง Schedules (ตารางเรียนปกติ) เพิ่มส่วนนี้เพื่อให้สมบูรณ์
     const classQuery = pool.query(
       `SELECT schedule_id as id, start_time, end_time, subject_name as title, 'class' as type, temporarily_closed
        FROM public."Schedules"
        WHERE room_id = $1 
        AND date = CURRENT_DATE
-       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL) -- เฉพาะวิชาที่ไม่ได้งด`, 
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, 
       [room_id]
     );
 
-    // รอให้เสร็จทั้งคู่
     const [bookingRes, classRes] = await Promise.all([bookingQuery, classQuery]);
 
-    // รวมข้อมูลเป็น Array เดียว แล้วเรียงตามเวลา
     const allSchedules = [...bookingRes.rows, ...classRes.rows].sort((a, b) => {
-        return a.start_time.localeCompare(b.start_time);
+        return String(a.start_time).localeCompare(String(b.start_time));
     });
 
-
-    // คำนวณสถานะ Real-time (ว่าง / ไม่ว่าง)
+    // ==========================================
+    // ⏱️ 3. คำนวณสถานะ Real-time (ความละเอียด 30 นาที)
+    // ==========================================
     const now = new Date();
-    // แปลงเวลาปัจจุบันเป็น HH:MM:SS เพื่อเทียบกับ Database (Time type)
-    const currentTimeString = now.toLocaleTimeString('th-TH', { hour12: false }); 
+    // ดึงชั่วโมงและนาทีปัจจุบันออกมา
+    const currentHours = now.getHours();
+    const currentMinutes = now.getMinutes();
+    
+    // 💡 ล็อกเวลาให้เป็นบล็อกละ 30 นาที (ถ้าเกินนาทีที่ 30 ให้เป็น 30, ถ้าไม่ถึงให้เป็น 0)
+    const roundedMinutes = currentMinutes >= 30 ? 30 : 0;
+    
+    // แปลงเวลาปัจจุบัน (ที่ถูกปัดเศษแล้ว) เป็นหน่วยนาทีทั้งหมดตั้งแต่เที่ยงคืน
+    // เช่น 14:30 = (14 * 60) + 30 = 870 นาที
+    const currentTotalMinutes = (currentHours * 60) + roundedMinutes;
 
     let currentStatus = 'available'; 
-    let currentActivity = null; // เก็บหัวข้อวิชาที่กำลังเรียนอยู่ (ถ้ามี)
+    let currentActivity = null; 
 
     for (const slot of allSchedules) {
-      // แปลงเวลา database เป็น string ที่เทียบง่ายๆ
-      const start = String(slot.start_time); 
-      const end = String(slot.end_time);
+      // แปลงเวลาเริ่มและจบของแต่ละคาบ เป็นหน่วยนาที
+      const [startH, startM] = String(slot.start_time).split(':').map(Number);
+      const [endH, endM] = String(slot.end_time).split(':').map(Number);
+      
+      const startTotalMinutes = (startH * 60) + startM;
+      const endTotalMinutes = (endH * 60) + endM;
 
-      // เช็คว่า "ตอนนี้" อยู่ในช่วงเวลานั้นไหม
-      if (currentTimeString >= start && currentTimeString <= end) {
+      // 💡 เช็คว่าเวลาปัจจุบัน (แบบบล็อก 30 นาที) อยู่ในช่วงเวลานี้ไหม
+      // ใช้ < endTotalMinutes (น้อยกว่า) เพื่อให้เวลาสิ้นสุดเป๊ะๆ ห้องกลับมา "ว่าง" ทันที
+      if (currentTotalMinutes >= startTotalMinutes && currentTotalMinutes < endTotalMinutes) {
         currentStatus = 'busy';
-        currentActivity = slot.title; // เอาชื่อวิชา/หัวข้อจอง ไปโชว์ด้วย
-        break; // เจอแล้วหยุดเช็คเลย
+        currentActivity = slot.title; 
+        break; 
       }
     }
 
-    // ส่งผลลัพธ์
+    // 4. ส่งผลลัพธ์
     res.json({
       room,
       status: currentStatus,
-      current_activity: currentActivity, // ชื่อวิชาที่เรียนอยู่ (ถ้ามี)
+      current_activity: currentActivity, 
       schedule: allSchedules.map(s => ({
           ...s,
-          start_time: String(s.start_time).substring(0, 5), // ตัดวินาทีออกให้สวยงาม
+          start_time: String(s.start_time).substring(0, 5), 
           end_time: String(s.end_time).substring(0, 5)
       }))
     });
