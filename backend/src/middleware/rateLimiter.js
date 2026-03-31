@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js'
 
 export const globalLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 นาที
-  max: 60, // อนุญาตให้ยิง API ได้ 60 ครั้งต่อนาที (ต่อ IP)
+  max: 120, // max = 60 คือ อนุญาตให้ยิง API ได้ 60 ครั้งต่อนาที (ต่อ IP)
   message: { message: 'คุณยิง API เกินกำหนด' },
   standardHeaders: true,
   legacyHeaders: false,

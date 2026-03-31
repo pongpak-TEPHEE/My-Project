@@ -20,7 +20,7 @@ const router = express.Router();
 
 
 // api สำหรับการสรัาง log ข้อมูลเพื่อดู
-router.get('/export-excel', exportTermReport);
+router.get('/export-excel', authenticateToken, authorizeRole('staff'), exportTermReport);
 
 // ==========================================
 // 🚏 Routes สำหรับจัดการประวัติตารางเรียน

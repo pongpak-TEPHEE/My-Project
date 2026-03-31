@@ -1073,6 +1073,8 @@ const calculateHours = (startTime, endTime) => {
   return (endH + endM / 60) - (startH + startM / 60);
 };
 
+// router.get('schedules/export-excel', authenticateToken, authorizeRole('staff'), exportTermReport);
+// export excel เพื่อสร้าง Log
 export const exportTermReport = async (req, res) => {
   const { startDate, endDate } = req.query; 
 
