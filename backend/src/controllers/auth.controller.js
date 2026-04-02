@@ -83,7 +83,7 @@ export const verifyOTP = async (req, res) => {
     //  ค้นหา OTP ที่ถูกต้องและยังไม่หมดอายุ
     const otpResult = await pool.query(
       `SELECT * FROM public."OTP" 
-       WHERE email = $1 AND otp_code = $2 AND expired_at > NOW()`,
+      WHERE email = $1 AND otp_code = $2 AND expired_at > NOW()`,
       [email, otp_code]
     );
 
@@ -102,14 +102,12 @@ export const verifyOTP = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    console.log("user = {}", user);
-
 
     // 1. สร้าง session_id ใหม่ (ใช้ crypto.randomBytes จะได้ string ความยาว 20 ตัวอักษร พอดีกับโครงสร้าง DB)
     const sessionId = crypto.randomBytes(10).toString('hex');
 
-    // 2. สร้าง JWT Token โดยฝัง session_id ลงไปใน Payload
-    const token = jwt.sign(
+    // 2. 🔑 ดอกที่ 1: สร้าง Access Token (อายุสั้น 1 ชั่วโมง)
+    const accessToken = jwt.sign(
       {
         user_id: user.user_id,
         role: user.role,
@@ -117,8 +115,23 @@ export const verifyOTP = async (req, res) => {
         session_id: sessionId
       },
       process.env.JWT_SECRET,
-      { expiresIn: '1d' }
+      { expiresIn: '60s' } // กำหนดอายุ token เป็น 1 ชม.
     );
+
+    // 3. 🗝️ ดอกที่ 2: สร้าง Refresh Token (อายุยาว 7 วัน)
+    const refreshToken = jwt.sign(
+      { user_id: user.user_id },
+      process.env.JWT_REFRESH_SECRET, 
+      { expiresIn: '7d' }
+    );
+
+    // 📦 ฝัง Refresh Token ลงใน HttpOnly Cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true, // ป้องกัน XSS (Javascript ฝั่ง Frontend จะมองไม่เห็น)
+      secure: true, // process.env.NODE_ENV === 'production', // ถ้าขึ้น Server จริง (https) ถึงจะทำงาน
+      sameSite: 'none', // 'strict', // ป้องกันการโจมตีข้ามเว็บไซต์ (CSRF)
+      maxAge: 7 * 24 * 60 * 60 * 1000, // อายุ 7 วัน (หน่วยเป็นมิลลิวินาที)
+    });
 
     // 3. อัปเดตสถานะ is_verified และ session_id ในตาราง Users
     await pool.query(
@@ -126,13 +139,13 @@ export const verifyOTP = async (req, res) => {
       [email, sessionId]
     );
 
-    // ลบ OTP ทิ้งทันที (One-Time จริงๆ)
+    // ลบ OTP ทิ้ง
     await pool.query('DELETE FROM public."OTP" WHERE email = $1', [email]);
 
     //  ส่ง Response กลับไป
     res.json({
       message: 'เข้าสู่ระบบสำเร็จ',
-      token, // ส่ง Token
+      token: accessToken, // ส่ง Token
       user: { 
         user_id: user.user_id,
         title: user.title,
@@ -146,6 +159,63 @@ export const verifyOTP = async (req, res) => {
   } catch (error) {
     console.error('Verify OTP Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์' });
+  }
+};
+
+
+// ฟังก์ชันต่ออายุ Access Token
+export const refreshToken = async (req, res) => {
+  console.log("refresh token ทำงาน")
+  // 1. ดึง Refresh Token จาก Cookie ที่เบราว์เซอร์แนบมาให้
+  const token = req.cookies.refreshToken;
+
+  if (!token) {
+    console.log("ไม่พบ refresh token");
+    return res.status(401).json({ message: 'ไม่พบ Refresh Token กรุณาเข้าสู่ระบบใหม่' });
+  }
+
+  try {
+    // 2. ตรวจสอบว่า Refresh Token ถูกต้องและยังไม่หมดอายุใช่ไหม
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    console.log(`Decoded token = ${decoded.rows}`);
+
+    // 🚨 วิ่งไปเช็คข้อมูลล่าสุดใน Database (จุดที่เพิ่มเข้ามา!)
+    const userResult = await pool.query(
+      `SELECT user_id, role, name, session_id, is_active FROM public."Users" WHERE user_id = $1`,
+      [decoded.user_id]
+    );
+    console.log(`ข้อมูลของ user ที่จะต่ออายุ token = ${userResult.rows[0]}`);
+
+    // ตรวจสอบว่ายังมี User คนนี้อยู่ไหม หรือถูกระงับการใช้งานไปหรือยัง
+    if (userResult.rows.length === 0 || userResult.rows[0].is_active === false) {
+      res.clearCookie('refreshToken'); // ริบกุญแจคืน
+      console.log("ไม่มีบัญชีนี้อยู่")
+      return res.status(401).json({ message: 'บัญชีผู้ใช้ถูกระงับ หรือไม่มีอยู่ในระบบแล้ว' });
+    }
+
+    const currentUser = userResult.rows[0];
+
+    // 3. สร้าง Access Token ดอกใหม่ (อายุ 1 ชม. เหมือนเดิม)
+    console.log("new token ถูกสร้าง");
+    const newAccessToken = jwt.sign(
+      { user_id: currentUser.user_id,
+        role: currentUser.role,
+        name: currentUser.name,
+        session_id: currentUser.session_id
+      }, 
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+
+    console.log(`new tokent = ${newAccessToken}`);
+    // 4. ส่งกุญแจดอกใหม่กลับไปให้ Frontend
+    res.json({ token: newAccessToken });
+
+  } catch (error) {
+    // ถ้า Refresh Token หมดอายุ (ครบ 7 วัน) หรือโดนปลอมแปลง ให้ลบทิ้ง
+    res.clearCookie('refreshToken');
+    console.log("เข้าสู่ระบบใหม่")
+    return res.status(401).json({ message: 'Refresh Token หมดอายุ กรุณาเข้าสู่ระบบใหม่' });
   }
 };
 
@@ -177,7 +247,7 @@ export const logout = async (req, res) => {
     // บันทึกลง Blacklist
     await pool.query(
       `INSERT INTO public."TokenBlacklist" (token, expires_at) 
-       VALUES ($1, $2) 
+      VALUES ($1, $2) 
        ON CONFLICT (token) DO NOTHING`, // ถ้ามีอยู่แล้วก็ช่างมัน
       [token, expiresAt]
     );

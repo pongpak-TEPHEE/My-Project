@@ -19,7 +19,7 @@ export const globalLimiter = rateLimit({
 
 export const otpRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 นาที
-  max: 3, // จำกัดสูงสุด 3 ครั้งต่อ IP ภายใน windowMs
+  max: 10, // max: 3 คือ จำกัดสูงสุด 3 ครั้งต่อ IP ภายใน windowMs
   message: {
     message: 'คุณขอรหัส OTP บ่อยเกินไป กรุณารอ 15 นาทีแล้วลองใหม่อีกครั้ง'
   },

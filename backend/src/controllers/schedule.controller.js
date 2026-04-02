@@ -473,6 +473,7 @@ const insertScheduleToDB = async (client, data) => {
 // /schedule/:room_id
 // ดึงรายการการจองห้องที่มาจาก Excel table
 export const getSchedule = async (req, res) => {
+  
   try {
     const { room_id } = req.params;
     const { semester_id } = req.query;
@@ -482,13 +483,14 @@ export const getSchedule = async (req, res) => {
         schedule_id, 
         room_id, 
         subject_name, 
-        teacher_name, 
-        start_time, 
+        teacher_name,
+        teacher_surname,
+        start_time,
         end_time, 
         semester_id, 
         date,
-        temporarily_closed,  -- ✅ 1. ต้อง SELECT ออกมาด้วย
-        user_id           -- (แถม) ควรดึงออกมาด้วย เพื่อให้ Frontend เช็คสิทธิ์ได้
+        temporarily_closed,
+        user_id
       FROM public."Schedules"
       WHERE room_id = $1
     `;

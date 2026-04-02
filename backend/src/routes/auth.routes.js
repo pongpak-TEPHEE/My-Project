@@ -1,5 +1,5 @@
 import express from 'express';
-import { requestOTP, verifyOTP, logout } from '../controllers/auth.controller.js';
+import { requestOTP, verifyOTP, logout, refreshToken } from '../controllers/auth.controller.js';
 import { otpRateLimiter, loginRateLimiter } from '../middleware/rateLimiter.js';
 import {  authenticateToken } from '../middleware/auth.middleware.js'
 
@@ -75,6 +75,9 @@ router.post('/verify-otp', loginRateLimiter, verifyOTP);
  *       500:
  *         description: ระบบขัดข้อง
  */
-router.post('/logout', logout);
+router.post('/logout',authenticateToken, logout);
+
+
+router.post('/refresh-token', refreshToken);
 
 export default router;

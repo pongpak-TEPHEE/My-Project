@@ -27,12 +27,12 @@ export const startCleanupJob = () => {
       // เช็ค 2 กรณี: 1. วันที่ผ่านไปแล้ว (เมื่อวาน) หรือ 2. เป็นของวันนี้ แต่เวลา end_time ผ่านไปแล้ว
       const result = await pool.query(
         `UPDATE public."Booking"
-         SET status = 'completed'
-         WHERE status = 'approved'
-         AND (
-           date < CURRENT_DATE 
-           OR (date = CURRENT_DATE AND end_time < CURRENT_TIME
-         )`
+        SET status = 'completed'
+        WHERE status = 'approved'
+        AND (
+          date < CURRENT_DATE 
+          OR (date = CURRENT_DATE AND end_time < CURRENT_TIME)
+        )`
       );
 
       if (result.rowCount > 0) {
@@ -71,12 +71,12 @@ export const startCleanupJob = () => {
       // 2. เริ่มลบข้อมูลใน Database
       const result = await pool.query(
         `DELETE FROM public."Booking" 
-         WHERE 
-           -- เงื่อนไขที่ 1: คำขอที่รออนุมัติ (pending) แต่เลยวันที่ขอมาแล้วให้ลบทิ้งเลย
-           (status = 'pending' AND date < CURRENT_DATE)
-           OR 
-           -- เงื่อนไขที่ 2: ลบประวัติการจองของ "เทอมก่อนหน้า" ทั้งหมดทิ้ง (ขยะของเทอมเก่า)
-           (date < $1)`,
+        WHERE 
+          -- เงื่อนไขที่ 1: คำขอที่รออนุมัติ (pending) แต่เลยวันที่ขอมาแล้วให้ลบทิ้งเลย
+          (status = 'pending' AND date < CURRENT_DATE)
+          OR 
+          -- เงื่อนไขที่ 2: ลบประวัติการจองของ "เทอมก่อนหน้า" ทั้งหมดทิ้ง (ขยะของเทอมเก่า)
+          (date < $1)`,
         [termStartDateStr]
       );
 
