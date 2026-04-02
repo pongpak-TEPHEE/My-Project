@@ -115,7 +115,7 @@ export const verifyOTP = async (req, res) => {
         session_id: sessionId
       },
       process.env.JWT_SECRET,
-      { expiresIn: '60s' } // กำหนดอายุ token เป็น 1 ชม.
+      { expiresIn: '15m' } // กำหนดอายุ token เป็น 15 นาที
     );
 
     // 3. 🗝️ ดอกที่ 2: สร้าง Refresh Token (อายุยาว 7 วัน)
@@ -204,7 +204,7 @@ export const refreshToken = async (req, res) => {
         session_id: currentUser.session_id
       }, 
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '15m' }
     );
 
     console.log(`new tokent = ${newAccessToken}`);
