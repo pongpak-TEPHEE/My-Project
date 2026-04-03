@@ -1,7 +1,7 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
 import crypto from 'crypto'; // สำหรับเข้าระหัส schedule_id
-import { sendScheduleBookingCancelledEmail } from '../services/mailer.js';
+import { sendScheduleBookingCancelledEmail, sendScheduleReclaimCancelledEmail } from '../services/mailer.js';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelData = (value, type = 'time') => {
@@ -599,53 +599,132 @@ export const getAllSchedules = async (req, res) => {
 export const updateScheduleStatus = async (req, res) => {
   const { id } = req.params; // รับ schedule_id
   const { temporarily_closed } = req.body;
+  const { user_id, role, name } = req.user; // 👈 ดึง name ของอาจารย์ออกมาจาก Token ด้วย
 
-  // ดึง user_id และ role จาก Token
-  // user_id นี้คือ ID ของคนที่กำลังกดปุ่มอยู่ตอนนี้
-  const { user_id, role } = req.user;
-
-  // ตรวจสอบ Input
   if (typeof temporarily_closed !== 'boolean') {
     return res.status(400).json({ message: 'ข้อมูลไม่ถูกต้อง (ต้องเป็น true หรือ false)' });
   }
 
+  // 🚨 1. สร้าง Connection พิเศษสำหรับทำ Transaction
+  const client = await pool.connect();
+
   try {
-    // สร้าง Query แบบ Dynamic (แยก Logic ตาม Role)
-    
-    let sql = `UPDATE public."Schedules"
-               SET temporarily_closed = $1
-               WHERE schedule_id = $2`;
-    
-    const params = [temporarily_closed, id];
+    // 🚨 2. เริ่มต้น Transaction (ถ้าพังกลางทาง ระบบจะยกเลิกสิ่งที่ทำมาทั้งหมด)
+    await client.query('BEGIN');
 
-    // ถ้า "ไม่ใช่ staff" ต้องเช็คว่า user_id ตรงกับ user_id ไหม
-    // (สมมติว่าในตาราง Schedules มีคอลัมน์ชื่อ user_id นะครับ)
-    if (role.toLowerCase().trim() !== 'staff') {
-        sql += ` AND user_id = $3`; 
-        params.push(user_id);
+    // ขั้นตอนที่ 1: ดึงข้อมูลตารางเรียนนี้ออกมาก่อน เพื่อเอาไปเช็คสิทธิ์ และเอาเวลาไปเช็คทับซ้อน
+    const scheduleResult = await client.query(
+      `SELECT * FROM public."Schedules" WHERE schedule_id = $1`,
+      [id]
+    );
+
+    if (scheduleResult.rows.length === 0) {
+      throw { status: 404, message: 'ไม่พบข้อมูลตารางเรียนนี้' };
     }
 
-    sql += ` RETURNING schedule_id, subject_name, temporarily_closed`;
+    const schedule = scheduleResult.rows[0];
 
-    const result = await pool.query(sql, params);
-
-    if (result.rows.length === 0) {
-      return res.status(403).json({ 
-          message: 'ไม่พบข้อมูล หรือ คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้' 
-      });
+    // ตรวจสอบสิทธิ์ (ไม่ใช่ Staff และไม่ใช่เจ้าของวิชา)
+    if (role.toLowerCase().trim() !== 'staff' && schedule.user_id !== user_id) {
+      throw { status: 403, message: 'คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้' };
     }
 
-    const updatedSchedule = result.rows[0];
+    // ขั้นตอนที่ 2: อัปเดตสถานะ "งดใช้ห้อง" ตามปกติ
+    const updateScheduleSql = `
+      UPDATE public."Schedules"
+      SET temporarily_closed = $1
+      WHERE schedule_id = $2
+      RETURNING schedule_id, subject_name, temporarily_closed
+    `;
+    const updatedSchedule = await client.query(updateScheduleSql, [temporarily_closed, id]);
+
+    let canceledBookingsCount = 0;
+
+    // 🚨 ขั้นตอนที่ 3: ถ้าอาจารย์ "เปลี่ยนใจไม่งดแล้ว" (temporarily_closed = false)
+    if (temporarily_closed === false) {
+      
+      const conflictParams = [
+        schedule.room_id,     // $1
+        schedule.date,        // $2 (วันที่อาจารย์สอน)
+        schedule.start_time,  // $3 (เวลาเริ่มสอน)
+        schedule.end_time     // $4 (เวลาเลิกสอน)
+      ];
+
+      // 3.1 🔍 ค้นหาคิวที่ทับซ้อน พร้อมดึงข้อมูลอีเมลและชื่อของนิสิตคนนั้นออกมา
+      const findConflictsSql = `
+        SELECT b.booking_id, b.start_time, b.end_time, b.purpose, 
+               u.email, u.name as user_name
+        FROM public."Booking" b
+        JOIN public."Users" u ON b.user_id = u.user_id
+        WHERE b.room_id = $1
+          AND b.date = $2
+          AND b.start_time < $4
+          AND b.end_time > $3
+          AND b.status IN ('pending', 'approved')
+      `;
+      const conflictUsers = await client.query(findConflictsSql, conflictParams);
+
+      // 3.2 ❌ ถ้าเจอคนจองทับซ้อน ให้ทำการยกเลิกและส่งอีเมล
+      if (conflictUsers.rows.length > 0) {
+        
+        // กรองเอาเฉพาะ booking_id เพื่อเอาไปใช้ในคำสั่ง UPDATE
+        const bookingIdsToCancel = conflictUsers.rows.map(r => r.booking_id);
+
+        const cancelConflictSql = `
+          UPDATE public."Booking"
+          SET status = 'cancelled'
+          WHERE booking_id = ANY($1::varchar[])
+        `;
+        
+        await client.query(cancelConflictSql, [bookingIdsToCancel]);
+        canceledBookingsCount = conflictUsers.rows.length;
+
+        // 3.3 📧 วนลูปส่งอีเมลแจ้งเตือนนิสิตแต่ละคน (ไม่ต้อง await ระบบจะได้ไม่หน่วง)
+        conflictUsers.rows.forEach(user => {
+          // แปลงเวลาให้ดูสวยงาม เช่น "09:00:00 - 10:30:00"
+          const timeSlot = `${user.start_time} - ${user.end_time}`;
+          const teacherName = name || 'อาจารย์ผู้สอน'; // กันเหนียวเผื่อใน Token ไม่มี name
+          
+          sendScheduleReclaimCancelledEmail(
+            user.email,
+            user.user_name,
+            schedule.room_id,
+            schedule.date,
+            timeSlot,
+            user.purpose,
+            teacherName,
+            schedule.subject_name
+          ).catch(err => console.error("Email sending failed in background:", err));
+        });
+      }
+    }
+
+    // 🚨 4. ยืนยันการเปลี่ยนแปลงทั้งหมดลง Database
+    await client.query('COMMIT');
+
     const statusText = temporarily_closed ? 'งดใช้ห้อง (Closed)' : 'ใช้งานปกติ (Active)';
 
     res.json({
       message: `อัปเดตสถานะสำเร็จ: ${statusText}`,
-      schedule: updatedSchedule
+      schedule: updatedSchedule.rows[0],
+      canceled_conflicts: canceledBookingsCount // บอก Frontend ด้วยว่าเตะไปกี่คน
     });
 
   } catch (error) {
+    // 🚨 5. ถ้ามีอะไรพังกลางทาง ให้ Rollback กลับไปจุดเริ่มต้นทั้งหมด!
+    await client.query('ROLLBACK');
     console.error('Update Schedule Status Error:', error);
-    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการอัปเดตสถานะ' });
+
+    // ส่ง Error กลับไปให้ตรงกับตอนที่ Check สิทธิ์
+    if (error.status) {
+      res.status(error.status).json({ message: error.message });
+    } else {
+      res.status(500).json({ message: 'เกิดข้อผิดพลาดในการอัปเดตสถานะ' });
+    }
+
+  } finally {
+    // 🚨 6. คืน Connection กลับเข้า Pool
+    client.release();
   }
 };
 

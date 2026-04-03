@@ -658,26 +658,32 @@ export const updateBookingStatus = async (req, res) => {
 
 // /bookings/allBookingSpecific/:roomId
 // สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา เพื่อใช้ในปฐิทิน
-export const getAllBookingSpecific =  async (req, res) => {
+export const getAllBookingSpecific = async (req, res) => {
     const { roomId } = req.params;
     const { status } = req.query;
 
     try {
+        const statusArray = status ? status.split(',') : ['approved'];
+
         const query = `
             SELECT 
                 b.booking_id,
+                b.room_id,
+                b.status,
                 b.date,
                 b.start_time,
                 b.end_time,
-                b.purpose, -- ไม่จำเป็น
+                b.purpose,
                 u.name as teacher_name,
                 u.surname as teacher_surname
             FROM public."Booking" b
             JOIN public."Users" u ON b.user_id = u.user_id
-            WHERE b.room_id = $1 AND b.status = $2
+            WHERE b.room_id = $1 AND b.status = ANY($2::text[])
         `;
-        const result = await pool.query(query, [roomId, status || 'approved']);
         
+        // ส่ง Array เข้าไปให้ PostgreSQL
+        const result = await pool.query(query, [roomId, statusArray]);
+ 
         res.json(result.rows); 
     } catch (err) {
         console.error(err);
