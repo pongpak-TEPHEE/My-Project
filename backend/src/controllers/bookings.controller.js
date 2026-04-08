@@ -69,7 +69,7 @@ export const getRejectedBookings = async (req, res) => {
     let sql = `
       SELECT 
          b.booking_id, 
-         b.date, 
+         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, -- 👈 1. แปลงเป็น String ป้องกัน Timezone Trap
          b.start_time, 
          b.end_time, 
          b.purpose,
@@ -82,6 +82,7 @@ export const getRejectedBookings = async (req, res) => {
       JOIN public."Rooms" r ON b.room_id = r.room_id
       JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'rejected'
+      AND b.date >= CURRENT_DATE -- 👈 2. กรองเอาเฉพาะวันที่ปัจจุบันและอนาคต
     `;
 
     const params = [];
@@ -89,19 +90,20 @@ export const getRejectedBookings = async (req, res) => {
     // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
         // Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
-        sql += ` AND b.user_id = $1`;
+        // 🚨 3. เปลี่ยนจาก $1 เป็น $${params.length + 1} เพื่อความปลอดภัยและยืดหยุ่น
+        sql += ` AND b.user_id = $${params.length + 1}`; 
         params.push(requester.user_id);
 
     } else if (requester.role === 'staff' || requester.role === 'admin') {
         // Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
         if (user_id) {
-            sql += ` AND b.user_id = $1`;
+            sql += ` AND b.user_id = $${params.length + 1}`; 
             params.push(user_id);
         }
     }
 
-    // การเรียงลำดับ (วันที่ล่าสุดขึ้นก่อน)
-    sql += ` ORDER BY b.date DESC, b.start_time ASC`;
+    // 👈 4. ปรับการเรียงลำดับเป็น ASC (วันที่ใกล้จะถึงที่สุดขึ้นก่อน)
+    sql += ` ORDER BY b.date ASC, b.start_time ASC`;
 
     // รัน Query
     const result = await pool.query(sql, params);
@@ -112,6 +114,7 @@ export const getRejectedBookings = async (req, res) => {
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
        end_time: String(row.end_time).substring(0, 5)
     }));
+    
     res.json(formattedBookings);
 
   } catch (error) {
@@ -132,7 +135,7 @@ export const getApprovedBookings = async (req, res) => {
     let sql = `
       SELECT 
          b.booking_id, 
-         b.date, 
+         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, -- 👈 แปลงเป็น String ป้องกันปัญหาวันที่เพี้ยน
          b.start_time, 
          b.end_time, 
          b.purpose, 
@@ -145,6 +148,7 @@ export const getApprovedBookings = async (req, res) => {
       JOIN public."Rooms" r ON b.room_id = r.room_id
       JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'approved'
+      AND b.date >= CURRENT_DATE -- 👈 เพิ่มเงื่อนไข: ดึงแค่วันนี้ และวันในอนาคต
     `;
 
     const params = [];
@@ -155,7 +159,7 @@ export const getApprovedBookings = async (req, res) => {
         sql += ` AND b.user_id = $${params.length + 1}`;
         params.push(requester.user_id);
 
-    } else if (requester.role === 'staff' || requester.role === 'admin') {
+    } else if (requester.role === 'staff') {
         // Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
         if (user_id) {
             sql += ` AND b.user_id = $${params.length + 1}`;
@@ -163,8 +167,8 @@ export const getApprovedBookings = async (req, res) => {
         }
     }
 
-    // การเรียงลำดับเป็นแบบ DESC
-    sql += ` ORDER BY b.date DESC, b.start_time ASC`;
+    // 👈 ปรับการเรียงลำดับเป็น ASC เพื่อให้คิวที่ใกล้ถึงที่สุดขึ้นมาก่อน
+    sql += ` ORDER BY b.date ASC, b.start_time ASC`; 
 
     // รัน Query
     const result = await pool.query(sql, params);
@@ -175,6 +179,7 @@ export const getApprovedBookings = async (req, res) => {
        start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
        end_time: String(row.end_time).substring(0, 5)
     }));
+    
     res.json(formattedBookings);
 
   } catch (error) {
