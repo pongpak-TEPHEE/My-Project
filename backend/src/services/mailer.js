@@ -250,7 +250,7 @@ export const sendScheduleReclaimCancelledEmail = async (toEmail, userName, roomI
             html: `
                 <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
                     <div style="background-color: #dc3545; padding: 15px; text-align: center;">
-                        <h2 style="color: white; margin: 0;">แจ้งยกเลิกการจองห้องพัก/ห้องเรียน</h2>
+                        <h2 style="color: white; margin: 0;">แจ้งยกเลิกการจองห้อง</h2>
                     </div>
                     <div style="padding: 20px;">
                         <p>เรียน คุณ <strong>${userName}</strong>,</p>

@@ -1,7 +1,7 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
 import crypto from 'crypto'; // สำหรับเข้าระหัส schedule_id
-import { sendScheduleBookingCancelledEmail, sendScheduleReclaimCancelledEmail } from '../services/mailer.js';
+import { sendScheduleBookingCancelledEmail, sendScheduleReclaimCancelledEmail, sendBookingCancelledEmail } from '../services/mailer.js';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelData = (value, type = 'time') => {
@@ -599,7 +599,7 @@ export const getAllSchedules = async (req, res) => {
 export const updateScheduleStatus = async (req, res) => {
   const { id } = req.params; // รับ schedule_id
   const { temporarily_closed } = req.body;
-  const { user_id, role, name } = req.user; // 👈 ดึง name ของอาจารย์ออกมาจาก Token ด้วย
+  const { user_id, role, name } = req.user; // ดึงชื่อ Staff/Teacher ออกมาจาก Token
 
   if (typeof temporarily_closed !== 'boolean') {
     return res.status(400).json({ message: 'ข้อมูลไม่ถูกต้อง (ต้องเป็น true หรือ false)' });
@@ -609,12 +609,18 @@ export const updateScheduleStatus = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    // 🚨 2. เริ่มต้น Transaction (ถ้าพังกลางทาง ระบบจะยกเลิกสิ่งที่ทำมาทั้งหมด)
+    // 🚨 2. เริ่มต้น Transaction 
     await client.query('BEGIN');
 
-    // ขั้นตอนที่ 1: ดึงข้อมูลตารางเรียนนี้ออกมาก่อน เพื่อเอาไปเช็คสิทธิ์ และเอาเวลาไปเช็คทับซ้อน
+    // ขั้นตอนที่ 1: ดึงข้อมูลตารางเรียน + JOIN ข้อมูลอาจารย์เจ้าของวิชา
     const scheduleResult = await client.query(
-      `SELECT * FROM public."Schedules" WHERE schedule_id = $1`,
+      `SELECT s.*, 
+              TO_CHAR(s.date, 'YYYY-MM-DD') AS formatted_date, -- แปลงวันที่ป้องกัน Timezone เพี้ยน
+              u.email AS owner_email, 
+              u.name AS owner_name 
+       FROM public."Schedules" s
+       JOIN public."Users" u ON s.user_id = u.user_id
+       WHERE s.schedule_id = $1`,
       [id]
     );
 
@@ -640,17 +646,38 @@ export const updateScheduleStatus = async (req, res) => {
 
     let canceledBookingsCount = 0;
 
-    // 🚨 ขั้นตอนที่ 3: ถ้าอาจารย์ "เปลี่ยนใจไม่งดแล้ว" (temporarily_closed = false)
+    // ---------------------------------------------------------
+    // 🚨 ขั้นตอนที่ 3: จัดการระบบส่งอีเมล และเตะคิวจองที่ทับซ้อน
+    // ---------------------------------------------------------
+
+    // 🌟 กรณีที่ 3.1: Staff กด "งดใช้ห้อง" (แจ้งเตือนอาจารย์)
+    if (temporarily_closed === true && role.toLowerCase().trim() === 'staff') {
+        // แปลงเวลาให้ดูสวยงาม
+        const timeSlot = `${String(schedule.start_time).substring(0,5)} - ${String(schedule.end_time).substring(0,5)} น.`;
+        const cancelReason = `เจ้าหน้าที่ (${name}) ได้ดำเนินการ "งดใช้ห้อง" สำหรับวิชา ${schedule.subject_name} ให้เรียบร้อยแล้ว`;
+        
+        // ส่งอีเมลไปหาอาจารย์เจ้าของวิชา (ทำงานเบื้องหลัง)
+        sendBookingCancelledEmail(
+            schedule.owner_email,
+            schedule.owner_name,
+            schedule.room_id,
+            schedule.formatted_date,
+            timeSlot,
+            cancelReason
+        ).catch(err => console.error("Failed to email teacher:", err));
+    }
+
+
+    // 🌟 กรณีที่ 3.2: อาจารย์/Staff "ยกเลิกการงดใช้ห้อง" (ต้องเตะคิวที่จองทับซ้อนออก)
     if (temporarily_closed === false) {
-      
       const conflictParams = [
-        schedule.room_id,     // $1
-        schedule.date,        // $2 (วันที่อาจารย์สอน)
-        schedule.start_time,  // $3 (เวลาเริ่มสอน)
-        schedule.end_time     // $4 (เวลาเลิกสอน)
+        schedule.room_id,          // $1
+        schedule.formatted_date,   // $2 (ใช้วันที่ที่แปลงแล้ว)
+        schedule.start_time,       // $3
+        schedule.end_time          // $4
       ];
 
-      // 3.1 🔍 ค้นหาคิวที่ทับซ้อน พร้อมดึงข้อมูลอีเมลและชื่อของนิสิตคนนั้นออกมา
+      // 🔍 ค้นหาคิวที่ทับซ้อน 
       const findConflictsSql = `
         SELECT b.booking_id, b.start_time, b.end_time, b.purpose, 
                u.email, u.name as user_name
@@ -664,12 +691,9 @@ export const updateScheduleStatus = async (req, res) => {
       `;
       const conflictUsers = await client.query(findConflictsSql, conflictParams);
 
-      // 3.2 ❌ ถ้าเจอคนจองทับซ้อน ให้ทำการยกเลิกและส่งอีเมล
+      // ❌ ถ้าเจอคนจองทับซ้อน ให้ทำการยกเลิกและส่งอีเมลแจ้ง
       if (conflictUsers.rows.length > 0) {
-        
-        // กรองเอาเฉพาะ booking_id เพื่อเอาไปใช้ในคำสั่ง UPDATE
         const bookingIdsToCancel = conflictUsers.rows.map(r => r.booking_id);
-
         const cancelConflictSql = `
           UPDATE public."Booking"
           SET status = 'cancelled'
@@ -679,22 +703,21 @@ export const updateScheduleStatus = async (req, res) => {
         await client.query(cancelConflictSql, [bookingIdsToCancel]);
         canceledBookingsCount = conflictUsers.rows.length;
 
-        // 3.3 📧 วนลูปส่งอีเมลแจ้งเตือนนิสิตแต่ละคน (ไม่ต้อง await ระบบจะได้ไม่หน่วง)
+        // 📧 วนลูปส่งอีเมลแจ้งเตือนนิสิตแต่ละคน (กลับมาใช้ฟังก์ชันที่ถูกต้อง!)
         conflictUsers.rows.forEach(user => {
-          // แปลงเวลาให้ดูสวยงาม เช่น "09:00:00 - 10:30:00"
-          const timeSlot = `${user.start_time} - ${user.end_time}`;
-          const teacherName = name || 'อาจารย์ผู้สอน'; // กันเหนียวเผื่อใน Token ไม่มี name
+          const timeSlot = `${String(user.start_time).substring(0,5)} - ${String(user.end_time).substring(0,5)} น.`;
           
+          // ใช้ schedule.owner_name ที่เราดึงเตรียมไว้ตั้งแต่ขั้นตอนที่ 1 ได้เลย
           sendScheduleReclaimCancelledEmail(
             user.email,
             user.user_name,
             schedule.room_id,
-            schedule.date,
+            schedule.formatted_date,
             timeSlot,
             user.purpose,
-            teacherName,
-            schedule.subject_name
-          ).catch(err => console.error("Email sending failed in background:", err));
+            schedule.owner_name,    // ชื่ออาจารย์เจ้าของวิชา
+            schedule.subject_name   // ชื่อวิชาที่ดึงห้องคืน
+          ).catch(err => console.error("Failed to email student:", err));
         });
       }
     }
@@ -707,15 +730,14 @@ export const updateScheduleStatus = async (req, res) => {
     res.json({
       message: `อัปเดตสถานะสำเร็จ: ${statusText}`,
       schedule: updatedSchedule.rows[0],
-      canceled_conflicts: canceledBookingsCount // บอก Frontend ด้วยว่าเตะไปกี่คน
+      canceled_conflicts: canceledBookingsCount 
     });
 
   } catch (error) {
-    // 🚨 5. ถ้ามีอะไรพังกลางทาง ให้ Rollback กลับไปจุดเริ่มต้นทั้งหมด!
+    // 🚨 5. ถ้ามีอะไรพังกลางทาง ให้ Rollback!
     await client.query('ROLLBACK');
     console.error('Update Schedule Status Error:', error);
 
-    // ส่ง Error กลับไปให้ตรงกับตอนที่ Check สิทธิ์
     if (error.status) {
       res.status(error.status).json({ message: error.message });
     } else {
