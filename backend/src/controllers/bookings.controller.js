@@ -975,6 +975,7 @@ export const editBooking = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล' });
   }
 };
+
 // /bookings//my-bookings/active (GET method) 
 // การจองของฉัน (Active): วันปัจจุบันหรืออนาคต + (Pending/Approved)
 export const getMyActiveBookings = async (req, res) => {
@@ -984,6 +985,7 @@ export const getMyActiveBookings = async (req, res) => {
     const result = await pool.query(
       `SELECT 
          b.*,
+         TO_CHAR(b.date, 'YYYY-MM-DD') AS formatted_date,
          u.name,
          u.surname
        FROM public."Booking" b
@@ -995,9 +997,10 @@ export const getMyActiveBookings = async (req, res) => {
       [user_id]
     );
 
-    // จัด Format ข้อมูล
+    // 2. จัด Format ข้อมูลตอนส่ง
     const bookings = result.rows.map(row => ({
       ...row,
+      date: row.formatted_date, // 👈 3. เอาข้อความวันที่ที่ถูกต้อง ไปทับตัวแปร date อันเดิมที่เพี้ยน
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
       can_edit_delete: true 
@@ -1016,14 +1019,14 @@ export const getMyBookingHistory = async (req, res) => {
   const { user_id } = req.user;
 
   try {
-    // ดึงจากตาราง Booking + JOIN Users
+    // 1. ดึงจากตาราง Booking + JOIN Users (เพิ่ม TO_CHAR)
     const bookingQuery = pool.query(
       `SELECT 
           b.booking_id, 
           b.room_id, 
           b.user_id, 
           b.purpose, 
-          b.date, 
+          TO_CHAR(b.date, 'YYYY-MM-DD') AS formatted_date,
           b.start_time, 
           b.end_time, 
           b.status,
@@ -1040,19 +1043,25 @@ export const getMyBookingHistory = async (req, res) => {
       [user_id]
     );
 
-    //  ดึงจากตาราง Schedules
+    // 2. ดึงจากตาราง Schedules (เพิ่ม TO_CHAR)
     const scheduleQuery = pool.query(
       `SELECT 
-          schedule_id, room_id, subject_name, teacher_name, date, start_time, end_time, temporarily_closed
-       FROM public."Schedules"
-       WHERE user_id = $1 
-       AND temporarily_closed = TRUE`, 
+          schedule_id, 
+          room_id, 
+          subject_name, 
+          teacher_name, 
+          TO_CHAR(date, 'YYYY-MM-DD') AS formatted_date,
+          start_time, 
+          end_time, 
+          temporarily_closed
+      FROM public."Schedules"
+      WHERE user_id = $1 
+      AND temporarily_closed = TRUE`, 
       [user_id]
     );
 
     // ทำงานพร้อมกัน
     const [bookingResult, scheduleResult] = await Promise.all([bookingQuery, scheduleQuery]);
-
 
     // Merge & Normalize
     // แปลงข้อมูล Booking
@@ -1060,32 +1069,34 @@ export const getMyBookingHistory = async (req, res) => {
       id: row.booking_id,
       type: 'booking',
       user_id: row.user_id,
-      teacher_name: `${row.name} ${row.surname}`, // รวมชื่อและนามสกุล
+      teacher_name: `${row.name} ${row.surname}`,
       purpose: row.purpose,
       room_id: row.room_id,
-      date: row.date,
+      date: row.formatted_date, // 👈 เรียกใช้ String ที่แปลงแล้ว
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
       status: row.status,
       can_edit_delete: false
     }));
 
-    // 2. แปลงข้อมูล Schedule
+    // แปลงข้อมูล Schedule
     const schedules = scheduleResult.rows.map(row => ({
       id: row.schedule_id,
       type: 'class_schedule',
       purpose: row.subject_name,
       teacher_name: row.teacher_name,
       room_id: row.room_id,
-      date: row.date,
+      date: row.formatted_date, // 👈 เรียกใช้ String ที่แปลงแล้ว
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
       status: 'class_cancelled',
       can_edit_delete: false
     }));
 
-    // 3. รวมและเรียงลำดับ
+    // รวมและเรียงลำดับ (เรียงจากล่าสุดไปเก่าสุด)
     const allHistory = [...bookings, ...schedules].sort((a, b) => {
+        // ตอนนี้ a.date และ b.date เป็น String แบบ 'YYYY-MM-DD' ชัวร์ๆ แล้ว 
+        // การเอามาใส่ new Date() ตรงนี้จะไม่มีปัญหาเรื่อง Timezone ขยับวันครับ
         const dateA = new Date(a.date);
         const dateB = new Date(b.date);
         if (dateB - dateA !== 0) return dateB - dateA; 

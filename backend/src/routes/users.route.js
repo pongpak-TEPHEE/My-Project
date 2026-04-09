@@ -357,7 +357,7 @@ router.put('/edit/:user_id', authenticateToken, authorizeRole('staff'), editUser
  *             example:
  *               message: "เกิดข้อผิดพลาดในการลบผู้ใช้งาน"
  */
-router.patch('/delete/:user_id', authenticateToken, authorizeRole('staff'), deleteUser);
+router.patch('/delete/:user_id', authenticateToken, authorizeRole('staff', 'teacher'), deleteUser);
 
 /**
  * @swagger
