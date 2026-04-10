@@ -11,7 +11,10 @@ import { importClassSchedules,
     deleteScheduleLog,
     reuploadScheduleFile,
     confirmReuploadSchedules,
-    exportTermReport
+    exportTermReport,
+    showSubjectSchedule,
+    editSubjectDataSchedule,
+    deleteSubjectSchedule
     } 
     from '../controllers/schedule.controller.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.middleware.js';
@@ -347,93 +350,6 @@ router.post('/import', authenticateToken, authorizeRole('staff'), handleExcelUpl
  */
 router.post('/confirm', authenticateToken, authorizeRole('staff'), confirmSchedules);
 
-// ดึงข้อมูลที่เก็บไว้ใน table schedule ไปแสดงผลในตาราง
-/**
- * @swagger
- * /schedules/{room_id}:
- *   get:
- *     summary: ดึงข้อมูลตารางเรียนของห้องที่ระบุ (รองรับการกรองตามภาคการศึกษา)
- *     tags:
- *       - Schedules
- *     parameters:
- *       - in: path
- *         name: room_id
- *         required: true
- *         schema:
- *           type: string
- *         description: รหัสห้องที่ต้องการดูตารางเรียน
- *       - in: query
- *         name: semester_id
- *         required: false
- *         schema:
- *           type: string
- *         description: รหัสภาคการศึกษาสำหรับใช้กรองข้อมูล (เช่น "1/2569" หรือเว้นว่างเพื่อดูทั้งหมด)
- *     responses:
- *       200:
- *         description: ดึงข้อมูลตารางเรียนสำเร็จ
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 room_id:
- *                   type: string
- *                   example: "SC1-101"
- *                 semester:
- *                   type: string
- *                   example: "1/2569"
- *                 total:
- *                   type: integer
- *                   example: 2
- *                 schedules:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       schedule_id:
- *                         type: string
- *                         example: "sch-1001"
- *                       room_id:
- *                         type: string
- *                         example: "SC1-101"
- *                       subject_name:
- *                         type: string
- *                         example: "Software Engineering"
- *                       teacher_name:
- *                         type: string
- *                         example: "พงศ์ภัค ใจดี"
- *                       start_time:
- *                         type: string
- *                         example: "09:00"
- *                       end_time:
- *                         type: string
- *                         example: "12:00"
- *                       semester_id:
- *                         type: string
- *                         example: "1/2569"
- *                       date:
- *                         type: string
- *                         format: date
- *                         example: "2026-06-01"
- *                       temporarily_closed:
- *                         type: boolean
- *                         example: false
- *                       teacher_id:
- *                         type: string
- *                         example: "65xxxxxx"
- *                       status_text:
- *                         type: string
- *                         example: "เรียนปกติ"
- *       500:
- *         description: ระบบขัดข้อง
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *             example:
- *               message: "เกิดข้อผิดพลาดในการดึงตารางเรียน"
- */
-router.get('/:room_id', getSchedule)
 
 // ดึงข้อมูลที่เก็บไว้ใน table schedule ไปแสดงผลในตารางทุกห้อง
 /**
@@ -630,6 +546,11 @@ router.get('/', getAllSchedules)
  */
 router.patch('/:id/status', authenticateToken, authorizeRole('teacher', 'staff'), updateScheduleStatus);
 
+router.get('/subjects/:unique_schedules', authenticateToken, authorizeRole('staff'), showSubjectSchedule);
+
+router.patch('/editSubjects/:unique_schedules', authenticateToken, authorizeRole('staff'), editSubjectDataSchedule);
+
+router.delete('/deleteSubjects/:unique_schedules', authenticateToken, authorizeRole('staff'), deleteSubjectSchedule);
 
 // ==========================================
 // 🔄 Routes สำหรับอัปเดต/เขียนทับไฟล์ Excel
@@ -642,6 +563,93 @@ router.post('/reupload/:id', authenticateToken, authorizeRole('staff'), upload.s
 // 5. PUT: ยืนยันการบันทึก (ลบข้อมูลคาบเรียนเก่าทิ้ง และ Insert ของใหม่ลงไป)
 router.put('/reconfirm/:id', authenticateToken, authorizeRole('staff'), confirmReuploadSchedules);
 
+// ดึงข้อมูลที่เก็บไว้ใน table schedule ไปแสดงผลในตาราง
+/**
+ * @swagger
+ * /schedules/{room_id}:
+ *   get:
+ *     summary: ดึงข้อมูลตารางเรียนของห้องที่ระบุ (รองรับการกรองตามภาคการศึกษา)
+ *     tags:
+ *       - Schedules
+ *     parameters:
+ *       - in: path
+ *         name: room_id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: รหัสห้องที่ต้องการดูตารางเรียน
+ *       - in: query
+ *         name: semester_id
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: รหัสภาคการศึกษาสำหรับใช้กรองข้อมูล (เช่น "1/2569" หรือเว้นว่างเพื่อดูทั้งหมด)
+ *     responses:
+ *       200:
+ *         description: ดึงข้อมูลตารางเรียนสำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 room_id:
+ *                   type: string
+ *                   example: "SC1-101"
+ *                 semester:
+ *                   type: string
+ *                   example: "1/2569"
+ *                 total:
+ *                   type: integer
+ *                   example: 2
+ *                 schedules:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       schedule_id:
+ *                         type: string
+ *                         example: "sch-1001"
+ *                       room_id:
+ *                         type: string
+ *                         example: "SC1-101"
+ *                       subject_name:
+ *                         type: string
+ *                         example: "Software Engineering"
+ *                       teacher_name:
+ *                         type: string
+ *                         example: "พงศ์ภัค ใจดี"
+ *                       start_time:
+ *                         type: string
+ *                         example: "09:00"
+ *                       end_time:
+ *                         type: string
+ *                         example: "12:00"
+ *                       semester_id:
+ *                         type: string
+ *                         example: "1/2569"
+ *                       date:
+ *                         type: string
+ *                         format: date
+ *                         example: "2026-06-01"
+ *                       temporarily_closed:
+ *                         type: boolean
+ *                         example: false
+ *                       teacher_id:
+ *                         type: string
+ *                         example: "65xxxxxx"
+ *                       status_text:
+ *                         type: string
+ *                         example: "เรียนปกติ"
+ *       500:
+ *         description: ระบบขัดข้อง
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *             example:
+ *               message: "เกิดข้อผิดพลาดในการดึงตารางเรียน"
+ */
+router.get('/:room_id', getSchedule)
 
 
 

@@ -1,6 +1,6 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
-import crypto from 'crypto'; // สำหรับเข้าระหัส schedule_id
+import crypto from 'crypto';
 import { sendScheduleBookingCancelledEmail, sendScheduleReclaimCancelledEmail, sendBookingCancelledEmail } from '../services/mailer.js';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
@@ -594,11 +594,11 @@ export const getAllSchedules = async (req, res) => {
   }
 };
 
-// // PATCH /schedules/:id/status
+// PATCH /schedules/:id/status
 // ฟังก์ชันเปลี่ยนสถานะงดใช้ห้อง
 export const updateScheduleStatus = async (req, res) => {
   const { id } = req.params; // รับ schedule_id
-  const { temporarily_closed } = req.body;
+  const { temporarily_closed, closed_reason } = req.body;
   const { user_id, role, name } = req.user; // ดึงชื่อ Staff/Teacher ออกมาจาก Token
 
   if (typeof temporarily_closed !== 'boolean') {
@@ -618,9 +618,9 @@ export const updateScheduleStatus = async (req, res) => {
               TO_CHAR(s.date, 'YYYY-MM-DD') AS formatted_date, -- แปลงวันที่ป้องกัน Timezone เพี้ยน
               u.email AS owner_email, 
               u.name AS owner_name 
-       FROM public."Schedules" s
-       JOIN public."Users" u ON s.user_id = u.user_id
-       WHERE s.schedule_id = $1`,
+      FROM public."Schedules" s
+      JOIN public."Users" u ON s.user_id = u.user_id
+      WHERE s.schedule_id = $1`,
       [id]
     );
 
@@ -635,14 +635,18 @@ export const updateScheduleStatus = async (req, res) => {
       throw { status: 403, message: 'คุณไม่มีสิทธิ์แก้ไขตารางเรียนนี้' };
     }
 
-    // ขั้นตอนที่ 2: อัปเดตสถานะ "งดใช้ห้อง" ตามปกติ
+    // 2. ขั้นตอนที่ 2: อัปเดตสถานะ "งดใช้ห้อง" พร้อมอัปเดต "closed_reason"
     const updateScheduleSql = `
       UPDATE public."Schedules"
-      SET temporarily_closed = $1
-      WHERE schedule_id = $2
-      RETURNING schedule_id, subject_name, temporarily_closed
+      SET temporarily_closed = $1, closed_reason = $2
+      WHERE schedule_id = $3
+      RETURNING schedule_id, subject_name, temporarily_closed, closed_reason
     `;
-    const updatedSchedule = await client.query(updateScheduleSql, [temporarily_closed, id]);
+    const updatedSchedule = await client.query(updateScheduleSql, [
+      temporarily_closed, 
+      closed_reason || null, // ถ้าไม่ได้ส่งเหตุผลมาให้บันทึกเป็น null
+      id
+    ]);
 
     let canceledBookingsCount = 0;
 
@@ -654,7 +658,10 @@ export const updateScheduleStatus = async (req, res) => {
     if (temporarily_closed === true && role.toLowerCase().trim() === 'staff') {
         // แปลงเวลาให้ดูสวยงาม
         const timeSlot = `${String(schedule.start_time).substring(0,5)} - ${String(schedule.end_time).substring(0,5)} น.`;
-        const cancelReason = `เจ้าหน้าที่ (${name}) ได้ดำเนินการ "งดใช้ห้อง" สำหรับวิชา ${schedule.subject_name} ให้เรียบร้อยแล้ว`;
+        
+        // 3. นำ closed_reason ไปแนบในอีเมลให้ด้วย (ถ้ามีการกรอกเข้ามา)
+        const reasonText = closed_reason ? ` (เหตุผล: ${closed_reason})` : '';
+        const cancelReason = `เจ้าหน้าที่ (${name}) ได้ดำเนินการ "งดใช้ห้อง" สำหรับวิชา ${schedule.subject_name} ให้เรียบร้อยแล้ว${reasonText}`;
         
         // ส่งอีเมลไปหาอาจารย์เจ้าของวิชา (ทำงานเบื้องหลัง)
         sendBookingCancelledEmail(
@@ -672,7 +679,7 @@ export const updateScheduleStatus = async (req, res) => {
     if (temporarily_closed === false) {
       const conflictParams = [
         schedule.room_id,          // $1
-        schedule.formatted_date,   // $2 (ใช้วันที่ที่แปลงแล้ว)
+        schedule.formatted_date,   // $2 
         schedule.start_time,       // $3
         schedule.end_time          // $4
       ];
@@ -680,7 +687,7 @@ export const updateScheduleStatus = async (req, res) => {
       // 🔍 ค้นหาคิวที่ทับซ้อน 
       const findConflictsSql = `
         SELECT b.booking_id, b.start_time, b.end_time, b.purpose, 
-               u.email, u.name as user_name
+              u.email, u.name as user_name
         FROM public."Booking" b
         JOIN public."Users" u ON b.user_id = u.user_id
         WHERE b.room_id = $1
@@ -703,7 +710,7 @@ export const updateScheduleStatus = async (req, res) => {
         await client.query(cancelConflictSql, [bookingIdsToCancel]);
         canceledBookingsCount = conflictUsers.rows.length;
 
-        // 📧 วนลูปส่งอีเมลแจ้งเตือนนิสิตแต่ละคน (กลับมาใช้ฟังก์ชันที่ถูกต้อง!)
+        // 📧 วนลูปส่งอีเมลแจ้งเตือนอาจารย์แต่ละท่าน
         conflictUsers.rows.forEach(user => {
           const timeSlot = `${String(user.start_time).substring(0,5)} - ${String(user.end_time).substring(0,5)} น.`;
           
@@ -1164,6 +1171,239 @@ export const reuploadScheduleFile = async (req, res) => {
   } catch (error) {
     console.error('Re-upload Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการตรวจสอบและอัปเดตไฟล์' });
+  }
+};
+
+
+// GET /schedules/subjects/:unique_schedules
+// ฟังก์ชันแสดงรายการวิชาที่ไม่ซ้ำกันในชุดอัปโหลดนั้นๆ (ดึงเฉพาะวันแรกที่เริ่มเรียน)
+export const showSubjectSchedule = async (req, res) => {
+  // รับค่า unique_schedules มาจาก URL Parameter (หรือถ้า Frontend ส่งมาทาง Body ก็เปลี่ยนเป็น req.body ครับ)
+  const { unique_schedules } = req.params; 
+
+  if (!unique_schedules) {
+    return res.status(400).json({ message: 'กรุณาระบุรหัสชุดข้อมูลตารางเรียน (unique_schedules)' });
+  }
+
+  try {
+    // 1. DISTINCT ON (s.subject_name, s.sec) -> จัดกลุ่มวิชาและเซคเดียวกันให้เหลือแค่ Record เดียว
+    // 2. ORDER BY s.subject_name, s.sec, s.date ASC -> เรียงกลุ่มก่อน แล้วเรียงวันที่จากอดีตไปอนาคต (เพื่อให้ DISTINCT ON หยิบวันแรกสุดมา)
+    const query = `
+      SELECT DISTINCT ON (s.subject_name, s.sec)
+        s.room_id, 
+        s.subject_name, 
+        u.name AS teacher_name, 
+        u.surname AS teacher_surname, 
+        s.start_time, 
+        s.end_time, 
+        s.semester_id, 
+        TO_CHAR(s.date, 'YYYY-MM-DD') AS date, -- ป้องกัน Timezone เพี้ยน
+        s.sec
+      FROM public."Schedules" s
+      LEFT JOIN public."Users" u ON s.user_id = u.user_id
+      WHERE s.unique_schedules = $1
+      ORDER BY s.subject_name, s.sec, s.date ASC
+    `;
+
+    const result = await pool.query(query, [unique_schedules]);
+
+    // จัด Format ข้อมูลเวลาให้สวยงาม (ตัดวินาทีทิ้ง)
+    const formattedSubjects = result.rows.map(row => ({
+      ...row,
+      start_time: String(row.start_time).substring(0, 5),
+      end_time: String(row.end_time).substring(0, 5)
+    }));
+
+    res.json({
+      message: `ดึงข้อมูลสำเร็จ พบทั้งหมด ${formattedSubjects.length} รายวิชา`,
+      subjects: formattedSubjects
+    });
+
+  } catch (error) {
+    console.error('Show Subject Schedule Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลรายวิชา' });
+  }
+};
+
+
+export const editSubjectDataSchedule = async (req, res) => {
+  const { unique_schedules } = req.params; 
+  const {
+    old_subject_name, // ข้อมูลเดิมสำหรับเป็นเป้าหมายลบ
+    old_sec,          // ข้อมูลเดิมสำหรับเป็นเป้าหมายลบ
+    room_id,
+    subject_name,     
+    teacher_name,
+    teacher_surname,
+    start_time,
+    end_time,
+    date,             // วันที่เริ่มต้นเรียน (YYYY-MM-DD)
+    sec,              
+    repeat,           // จำนวนสัปดาห์
+    semester_id       // (Optional)
+  } = req.body;
+
+  // 1. Validation เช็คข้อมูลเบื้องต้น
+  if (!unique_schedules || !old_subject_name || !old_sec) {
+    return res.status(400).json({ message: 'ข้อมูลระบุวิชาเดิมไม่ครบถ้วน' });
+  }
+  if (!date || !repeat || repeat < 1) {
+    return res.status(400).json({ message: 'ข้อมูลวันที่เริ่มหรือจำนวนรอบ (repeat) ไม่ถูกต้อง' });
+  }
+
+  // 🚨 สร้าง Connection พิเศษสำหรับทำ Transaction
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN'); // เริ่มต้น Transaction
+
+    // 2. 🔍 ค้นหา user_id ของอาจารย์
+    const userResult = await client.query(
+      `SELECT user_id FROM public."Users" 
+       WHERE name = $1 AND surname = $2`,
+      [teacher_name, teacher_surname]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw { status: 404, message: 'ไม่พบข้อมูลอาจารย์ท่านนี้ในระบบ (ชื่อหรือนามสกุลไม่ตรง)' };
+    }
+    const teacherUserId = userResult.rows[0].user_id;
+
+    // 3. 💾 ดึงข้อมูลเก่ามา 1 แถว เพื่อสำรอง semester_id เผื่อหน้าเว็บไม่ได้ส่งมา
+    const oldDataResult = await client.query(
+       `SELECT semester_id
+        FROM public."Schedules"
+        WHERE unique_schedules = $1 AND subject_name = $2 AND sec = $3
+        LIMIT 1`,
+       [unique_schedules, old_subject_name, old_sec]
+    );
+
+    if (oldDataResult.rows.length === 0) {
+        throw { status: 404, message: 'ไม่พบรายวิชาเดิมที่ต้องการแก้ไข' };
+    }
+    
+    const oldData = oldDataResult.rows[0];
+    const finalSemesterId = semester_id || oldData.semester_id;
+
+    // 4. 🗑️ ลบข้อมูล "ของเก่า" ทั้งหมด (อิงตาม unique_schedules, ชื่อวิชาเก่า, และ sec เก่า)
+    await client.query(
+      `DELETE FROM public."Schedules"
+       WHERE unique_schedules = $1 AND subject_name = $2 AND sec = $3`,
+      [unique_schedules, old_subject_name, old_sec]
+    );
+
+    // 5. 🔄 วนลูป Insert สร้างข้อมูล "ของใหม่"
+    const insertQuery = `
+      INSERT INTO public."Schedules"
+      (schedule_id, unique_schedules, room_id, subject_name, user_id, teacher_name, teacher_surname, date, start_time, end_time, sec, semester_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `;
+
+    const baseDate = new Date(date);
+
+    for (let i = 0; i < repeat; i++) {
+      // 5.1 บวกวันที่ทีละ 7 วัน
+      const insertDate = new Date(baseDate);
+      insertDate.setDate(baseDate.getDate() + (i * 7));
+
+      // 5.2 หั่นเอาเฉพาะ YYYY-MM-DD แบบตรงไปตรงมา
+      const year = insertDate.getFullYear();
+      const month = String(insertDate.getMonth() + 1).padStart(2, '0');
+      const day = String(insertDate.getDate()).padStart(2, '0');
+      const formattedDate = `${year}-${month}-${day}`;
+
+      // 5.3 สร้าง schedule_id ใหม่ (เป็น random text ที่ไม่ซ้ำ)
+      const scheduleId = crypto.randomUUID();
+
+      // 5.4 Insert ลง Database ทีละสัปดาห์
+      await client.query(insertQuery, [
+        scheduleId,          // $1
+        unique_schedules,    // $2
+        room_id,             // $3
+        subject_name,        // $4
+        teacherUserId,       // $5
+        teacher_name,        // $6
+        teacher_surname,     // $7
+        formattedDate,       // $8
+        start_time,          // $9
+        end_time,            // $10
+        sec,                 // $11
+        finalSemesterId      // $12
+      ]);
+    }
+
+    // 6. 🟢 ยืนยันการเปลี่ยนแปลงทั้งหมดลง Database
+    await client.query('COMMIT');
+
+    res.json({ 
+      message: `แก้ไขและสร้างตารางเรียน ${subject_name} จำนวน ${repeat} สัปดาห์ เรียบร้อยแล้ว` 
+    });
+
+  } catch (error) {
+    // 🚨 Rollback ถ้าเกิดข้อผิดพลาด
+    await client.query('ROLLBACK');
+    console.error('Edit Subject Schedule Error:', error);
+    
+    if (error.status) {
+      res.status(error.status).json({ message: error.message });
+    } else {
+      res.status(500).json({ message: 'เกิดข้อผิดพลาดในการแก้ไขตารางเรียน' });
+    }
+  } finally {
+    client.release();
+  }
+};
+
+
+export const deleteSubjectSchedule = async (req, res) => {
+  const { unique_schedules } = req.params; 
+  // รับชื่อวิชาและ sec ที่ต้องการลบ (ใช้ req.body หรือ req.query ก็ได้ ขึ้นอยู่กับฝั่ง Frontend ส่งมา)
+  const { subject_name, sec } = req.body; 
+  const { user_id, role } = req.user; // ดึงข้อมูลคนกดลบมาจาก Token
+
+  // 1. ตรวจสอบว่าส่งข้อมูลมาครบไหม
+  if (!unique_schedules || !subject_name || !sec) {
+    return res.status(400).json({ 
+      message: 'กรุณาระบุรหัสชุดตารางเรียน (unique_schedules), ชื่อวิชา และหมู่เรียน (sec) ให้ครบถ้วน' 
+    });
+  }
+
+  try {
+    // 2. 🔍 เช็คก่อนว่ามีวิชานี้อยู่จริงไหม และใครเป็นเจ้าของ
+    const checkQuery = await pool.query(
+      `SELECT user_id FROM public."Schedules" 
+       WHERE unique_schedules = $1 AND subject_name = $2 AND sec = $3 
+       LIMIT 1`,
+      [unique_schedules, subject_name, sec]
+    );
+
+    if (checkQuery.rows.length === 0) {
+      return res.status(404).json({ message: 'ไม่พบรายวิชาที่ต้องการลบในระบบ' });
+    }
+
+    const scheduleOwner = checkQuery.rows[0].user_id;
+
+    // 3. 🛡️ ตรวจสอบสิทธิ์: ถ้าไม่ใช่ Staff, ไม่ใช่ Admin และ ไม่ใช่เจ้าของวิชา -> เตะออก!
+    const userRole = role.toLowerCase().trim();
+    if (userRole !== 'staff' && userRole !== 'admin' && scheduleOwner !== user_id) {
+      return res.status(403).json({ message: 'คุณไม่มีสิทธิ์ลบตารางเรียนวิชานี้' });
+    }
+
+    // 4. 🗑️ ทำการลบข้อมูล (จะลบออกกี่สัปดาห์ก็ตามที่ตรงกับเงื่อนไขนี้)
+    const deleteResult = await pool.query(
+      `DELETE FROM public."Schedules" 
+       WHERE unique_schedules = $1 AND subject_name = $2 AND sec = $3`,
+      [unique_schedules, subject_name, sec]
+    );
+
+    res.json({ 
+      message: `ลบตารางเรียนวิชา ${subject_name} กลุ่มเรียน ${sec} สำเร็จแล้ว (จำนวน ${deleteResult.rowCount} รายการ)`,
+      deleted_count: deleteResult.rowCount
+    });
+
+  } catch (error) {
+    console.error('Delete Subject Schedule Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการลบตารางเรียน' });
   }
 };
 

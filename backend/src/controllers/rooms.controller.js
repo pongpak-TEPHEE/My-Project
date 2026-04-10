@@ -579,16 +579,11 @@ export const findAvailableRooms = async (req, res) => {
     return res.status(400).json({ message: 'เวลาเริ่มต้องน้อยกว่าเวลาสิ้นสุด' });
   }
 
-
   // 🕒 ดักข้อมูลวันที่และเวลาย้อนหลัง
   const now = new Date();
   
   // นำวันที่และเวลามาต่อกันให้อยู่ในรูปแบบ Date Object (เช่น 2026-03-13T09:00:00)
   const searchDateTime = new Date(`${date}T${start_time}`);
-
-  console.log("searchDateTime {}", searchDateTime);
-  console.log("now {}", now);
-  console.log("if ", (searchDateTime < now));
 
   // ถ้าเวลาที่ค้นหา น้อยกว่าเวลาปัจจุบัน แปลว่าเป็นอดีต
   if (searchDateTime < now) {

@@ -804,13 +804,12 @@ export const cancelBooking = async (req, res) => {
     // อัปเดตสถานะใน Database
     await pool.query(
       `UPDATE public."Booking" 
-       SET status = 'cancelled' 
-       WHERE booking_id = $1`,
-      [id]
+      SET status = 'cancelled', cancel_reason = $2 
+      WHERE booking_id = $1`,
+      [id, cancel_reason || null]
     );
 
     // 📧 โซนส่งอีเมลแจ้งเตือน (แยกตามบริบท)
-
     // จัดฟอร์แมตข้อมูลเตรียมส่งอีเมล (ใช้ร่วมกันทั้ง 2 กรณี)
     const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
         year: 'numeric', month: 'long', day: 'numeric'
