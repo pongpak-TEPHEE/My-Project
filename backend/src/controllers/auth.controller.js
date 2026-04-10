@@ -115,14 +115,14 @@ export const verifyOTP = async (req, res) => {
         session_id: sessionId
       },
       process.env.JWT_SECRET,
-      { expiresIn: '1d' } // { expiresIn: '15m' } กำหนดอายุ token เป็น 15 นาที
+      { expiresIn: '30' } // { expiresIn: '15m' } กำหนดอายุ token เป็น 15 นาที
     );
 
     // 3. 🗝️ ดอกที่ 2: สร้าง Refresh Token (อายุยาว 7 วัน)
     const refreshToken = jwt.sign(
       { user_id: user.user_id },
       process.env.JWT_REFRESH_SECRET, 
-      { expiresIn: '7d' }
+      { expiresIn: '7d' } // { expiresIn: '7d' } กำหนดอายุของ refresh token เป็น 7 วัน
     );
 
     // 📦 ฝัง Refresh Token ลงใน HttpOnly Cookie
@@ -165,9 +165,12 @@ export const verifyOTP = async (req, res) => {
 
 // ฟังก์ชันต่ออายุ Access Token
 export const refreshToken = async (req, res) => {
-  console.log("refresh token ทำงาน")
+  console.log("-------------------------------------\n");
+  console.log("refresh token ทำงาน");
+
   // 1. ดึง Refresh Token จาก Cookie ที่เบราว์เซอร์แนบมาให้
   const token = req.cookies.refreshToken;
+  console.log(`refreshToken คือ ${token}`);
 
   if (!token) {
     console.log("ไม่พบ refresh token");
@@ -177,9 +180,10 @@ export const refreshToken = async (req, res) => {
   try {
     // 2. ตรวจสอบว่า Refresh Token ถูกต้องและยังไม่หมดอายุใช่ไหม
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    console.log(`Decoded token = ${decoded.rows}`);
+    console.log(`Decoded token คือ ${decoded}`);
 
     // 🚨 วิ่งไปเช็คข้อมูลล่าสุดใน Database (จุดที่เพิ่มเข้ามา!)
+    console.log(`decoded.user_id ${decoded.user_id}`);
     const userResult = await pool.query(
       `SELECT user_id, role, name, session_id, is_active FROM public."Users" WHERE user_id = $1`,
       [decoded.user_id]
@@ -204,7 +208,7 @@ export const refreshToken = async (req, res) => {
         session_id: currentUser.session_id
       }, 
       process.env.JWT_SECRET,
-      { expiresIn: '15m' }
+      { expiresIn: '30m' }
     );
 
     console.log(`new tokent = ${newAccessToken}`);
@@ -219,10 +223,10 @@ export const refreshToken = async (req, res) => {
   }
 };
 
-
 // /auth/logout
 // เป็นการลบ token ของผู้ใช้ออก
 export const logout = async (req, res) => {
+  console.log("function logout กำลังทำงาน !!!!!");
   try {
     // ดึง Token จาก Header
     const authHeader = req.headers['authorization'];

@@ -75,7 +75,7 @@ router.post('/verify-otp', loginRateLimiter, verifyOTP);
  *       500:
  *         description: ระบบขัดข้อง
  */
-router.post('/logout',authenticateToken, logout);
+router.post('/logout', authenticateToken, logout);
 
 
 router.post('/refresh-token', refreshToken);

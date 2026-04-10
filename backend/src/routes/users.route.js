@@ -257,7 +257,7 @@ router.post('/create', authenticateToken, authorizeRole('staff'), createUser);
  *             example:
  *               message: "เกิดข้อผิดพลาดในการแก้ไขข้อมูลผู้ใช้งาน"
  */
-router.put('/edit/:user_id', authenticateToken, authorizeRole('staff'), editUser);
+router.put('/edit/:user_id', authenticateToken, authorizeRole('staff', 'teacher'), editUser);
 
 /**
  * @swagger
