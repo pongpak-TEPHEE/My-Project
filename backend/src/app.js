@@ -35,12 +35,14 @@ import bookingsRoutes from './routes/bookings.route.js';    // createBooking, ge
 import roomsRoutes from './routes/rooms.route.js';          // getRoomScheduleToday, getAllRooms
 import usersRoutes from './routes/users.route.js';          // getUsers
 import scheduleRoutes from './routes/schedule.routes.js';
+import termRoutes from './routes/term.routes.js';
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
 app.use('/rooms', roomsRoutes);
 app.use('/bookings', bookingsRoutes);
 app.use('/schedules', scheduleRoutes);
+app.use('/terms', termRoutes);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 // ดักจับ 404 Not Found (ถ้าไม่เข้า Route ด้านบนเลย จะมาตกตรงนี้)

@@ -561,19 +561,27 @@ const emailCooldowns = new Map();
 // อัปเดตสถานะการจอง (Approve / Reject) for role staff only !!!!!!
 export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
-  const { status, cancel_reason } = req.body; // รับ cancel_reason มาด้วยเผื่อกรณีปฏิเสธ
+  const { status, cancel_reason } = req.body;
+  console.log("body:", req.body);
 
   if (!['approved', 'rejected', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
   }
 
   try {
+    // 🚨 1. เตรียมข้อมูลเหตุผลการยกเลิก: ถ้าไม่ได้กด reject ให้บังคับเป็น null
+    const finalCancelReason = status === 'rejected' ? (cancel_reason || null) : null;
+    
+    // 🚨 2. เตรียมข้อมูลคนอนุมัติ: ถ้ากด approved ค่อยใส่ user_id ถ้าไม่ใช่ให้เป็น null
+    const finalApprovedBy = status === 'approved' ? req.user.user_id : null;
+
+    // 🚨 3. อัปเดตข้อมูลลงฐานข้อมูลโดยใช้ตัวแปรที่กรองแล้ว
     const updateResult = await pool.query(
       `UPDATE public."Booking" 
-      SET status = $1, approved_by = $2
-      WHERE booking_id = $3 
+       SET status = $1, approved_by = $2, cancel_reason = $4
+       WHERE booking_id = $3 
        RETURNING *`,
-      [status, req.user.user_id, id]
+      [status, finalApprovedBy, id, finalCancelReason]
     );
 
     if (updateResult.rowCount === 0) {
@@ -584,10 +592,10 @@ export const updateBookingStatus = async (req, res) => {
 
     const details = await pool.query(
       `SELECT u.email, u.name, u.surname, r.room_id, r.room_type 
-      FROM public."Booking" b
-      JOIN public."Users" u ON b.user_id = u.user_id
-      JOIN public."Rooms" r ON b.room_id = r.room_id
-      WHERE b.booking_id = $1`,
+       FROM public."Booking" b
+       JOIN public."Users" u ON b.user_id = u.user_id
+       JOIN public."Rooms" r ON b.room_id = r.room_id
+       WHERE b.booking_id = $1`,
       [id]
     );
 
@@ -602,8 +610,7 @@ export const updateBookingStatus = async (req, res) => {
 
       let shouldSendEmail = true;
 
-      // เช่น const emailCooldowns = new Map();
-      if (emailCooldowns.has(cooldownKey)) {
+      if (typeof emailCooldowns !== 'undefined' && emailCooldowns.has(cooldownKey)) {
         const lastSentTime = emailCooldowns.get(cooldownKey);
         const diffMinutes = (Date.now() - lastSentTime) / (1000 * 60);
 
@@ -615,7 +622,9 @@ export const updateBookingStatus = async (req, res) => {
 
       // สั่งส่งอีเมล (ถ้าผ่านเงื่อนไข)
       if (shouldSendEmail) {
-        emailCooldowns.set(cooldownKey, Date.now());
+        if (typeof emailCooldowns !== 'undefined') {
+            emailCooldowns.set(cooldownKey, Date.now());
+        }
 
         const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
           year: 'numeric',
@@ -623,8 +632,8 @@ export const updateBookingStatus = async (req, res) => {
           day: 'numeric',
         });
 
-        const formattedStartTime = booking.start_time.substring(0, 5);
-        const formattedEndTime = booking.end_time.substring(0, 5);
+        const formattedStartTime = String(booking.start_time).substring(0, 5);
+        const formattedEndTime = String(booking.end_time).substring(0, 5);
 
         sendBookingStatusEmail(email, {
           teacher_name: teacherFullName,
@@ -634,7 +643,7 @@ export const updateBookingStatus = async (req, res) => {
           date: formattedDate,
           start_time: formattedStartTime,
           end_time: formattedEndTime,
-          cancel_reason: cancel_reason || ''
+          cancel_reason: finalCancelReason || '' 
         });
       }
     }
@@ -644,13 +653,15 @@ export const updateBookingStatus = async (req, res) => {
       booking: booking
     });
 
-    // บันทึกการกระทำที่สำคัญ
-    logger.info('Booking Status Changed', {
-      action_by_user_id: req.user.user_id,
-      target_booking_id: id,
-      new_status: status,
-      ip: req.ip
-    });
+    // บันทึกการกระทำที่สำคัญ (ถึงแม้ rejected จะไม่ได้ลง approved_by ใน DB แต่ Log จะยังเก็บข้อมูลคนทำรายการไว้อยู่ครับ)
+    if (typeof logger !== 'undefined') {
+        logger.info('Booking Status Changed', {
+        action_by_user_id: req.user.user_id,
+        target_booking_id: id,
+        new_status: status,
+        ip: req.ip
+        });
+    }
 
   } catch (error) {
     console.error('Update Status Error:', error);
