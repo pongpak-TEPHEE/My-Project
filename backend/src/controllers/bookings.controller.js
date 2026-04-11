@@ -9,8 +9,8 @@ import { logger } from '../utils/logger.js';
 export const getPendingBookings = async (req, res) => {
   try {
     // ดึงข้อมูล User คนที่เรียก API นี้มาจาก Token
-    const requester = req.user; 
-    
+    const requester = req.user;
+
     // ตั้งค่า Default SQL
     let sql = `
       SELECT 
@@ -22,20 +22,20 @@ export const getPendingBookings = async (req, res) => {
       JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'pending'
     `;
-    
+
     const params = [];
-    
+
     if (requester.role === 'teacher') {
-        // ถ้าเป็น Teacher: บังคับ กรองเฉพาะของตัวเอง
-        sql += ` AND b.user_id = $1`;
-        params.push(requester.user_id);
-        
+      // ถ้าเป็น Teacher: บังคับ กรองเฉพาะของตัวเอง
+      sql += ` AND b.user_id = $1`;
+      params.push(requester.user_id);
+
     } else if (requester.role === 'staff') {
-        // กรณีส่ง
-        if (req.query.user_id) {
-            sql += ` AND b.user_id = $1`;
-            params.push(req.query.user_id);
-        }
+      // กรณีส่ง
+      if (req.query.user_id) {
+        sql += ` AND b.user_id = $1`;
+        params.push(req.query.user_id);
+      }
     }
 
     sql += ` ORDER BY b.date ASC, b.start_time ASC`;
@@ -44,10 +44,10 @@ export const getPendingBookings = async (req, res) => {
 
     // Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
-       ...row,
+      ...row,
       //  teacher_name: `${row.name} ${row.surname}`,
-       start_time: String(row.start_time).substring(0, 5),
-       end_time: String(row.end_time).substring(0, 5)
+      start_time: String(row.start_time).substring(0, 5),
+      end_time: String(row.end_time).substring(0, 5)
     }));
 
     res.json(formattedBookings);
@@ -63,17 +63,18 @@ export const getPendingBookings = async (req, res) => {
 export const getRejectedBookings = async (req, res) => {
   try {
     // รับข้อมูลผู้เรียก (Requester) และ Query Parameter
-    const requester = req.user; 
+    const requester = req.user;
     const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
 
     let sql = `
       SELECT 
          b.booking_id, 
-         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, -- 👈 1. แปลงเป็น String ป้องกัน Timezone Trap
+         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, -- 1. แปลงเป็น String ป้องกัน Timezone Trap
          b.start_time, 
          b.end_time, 
          b.purpose,
          b.status,
+         b.cancel_reason,
          r.room_id,
          u.name, 
          u.surname,
@@ -82,24 +83,24 @@ export const getRejectedBookings = async (req, res) => {
       JOIN public."Rooms" r ON b.room_id = r.room_id
       JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'rejected'
-      AND b.date >= CURRENT_DATE -- 👈 2. กรองเอาเฉพาะวันที่ปัจจุบันและอนาคต
+      AND b.date >= CURRENT_DATE --  2. กรองเอาเฉพาะวันที่ปัจจุบันและอนาคต
     `;
 
     const params = [];
 
     // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
-        // Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
-        // 🚨 3. เปลี่ยนจาก $1 เป็น $${params.length + 1} เพื่อความปลอดภัยและยืดหยุ่น
-        sql += ` AND b.user_id = $${params.length + 1}`; 
-        params.push(requester.user_id);
+      // Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
+      // 🚨 3. เปลี่ยนจาก $1 เป็น $${params.length + 1} เพื่อความปลอดภัยและยืดหยุ่น
+      sql += ` AND b.user_id = $${params.length + 1}`;
+      params.push(requester.user_id);
 
     } else if (requester.role === 'staff' || requester.role === 'admin') {
-        // Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
-        if (user_id) {
-            sql += ` AND b.user_id = $${params.length + 1}`; 
-            params.push(user_id);
-        }
+      // Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
+      if (user_id) {
+        sql += ` AND b.user_id = $${params.length + 1}`;
+        params.push(user_id);
+      }
     }
 
     // 👈 4. ปรับการเรียงลำดับเป็น ASC (วันที่ใกล้จะถึงที่สุดขึ้นก่อน)
@@ -110,11 +111,11 @@ export const getRejectedBookings = async (req, res) => {
 
     // จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
-       ...row,
-       start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
-       end_time: String(row.end_time).substring(0, 5)
+      ...row,
+      start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
+      end_time: String(row.end_time).substring(0, 5)
     }));
-    
+
     res.json(formattedBookings);
 
   } catch (error) {
@@ -128,7 +129,7 @@ export const getRejectedBookings = async (req, res) => {
 export const getApprovedBookings = async (req, res) => {
   try {
     // รับข้อมูลผู้เรียก (Requester) และ Query Parameter
-    const requester = req.user; 
+    const requester = req.user;
     const { user_id } = req.query; // สำหรับ Staff ใช้กรองดูเฉพาะคน
 
     // สร้าง SQL พื้นฐาน
@@ -155,31 +156,31 @@ export const getApprovedBookings = async (req, res) => {
 
     // Logic การกรองสิทธิ์ (Role-based Logic)
     if (requester.role === 'teacher') {
-        // Teacher: เห็นเฉพาะของตัวเองเท่านั้น
-        sql += ` AND b.user_id = $${params.length + 1}`;
-        params.push(requester.user_id);
+      // Teacher: เห็นเฉพาะของตัวเองเท่านั้น
+      sql += ` AND b.user_id = $${params.length + 1}`;
+      params.push(requester.user_id);
 
     } else if (requester.role === 'staff') {
-        // Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
-        if (user_id) {
-            sql += ` AND b.user_id = $${params.length + 1}`;
-            params.push(user_id);
-        }
+      // Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
+      if (user_id) {
+        sql += ` AND b.user_id = $${params.length + 1}`;
+        params.push(user_id);
+      }
     }
 
     // 👈 ปรับการเรียงลำดับเป็น ASC เพื่อให้คิวที่ใกล้ถึงที่สุดขึ้นมาก่อน
-    sql += ` ORDER BY b.date ASC, b.start_time ASC`; 
+    sql += ` ORDER BY b.date ASC, b.start_time ASC`;
 
     // รัน Query
     const result = await pool.query(sql, params);
 
     // จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
-       ...row,
-       start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
-       end_time: String(row.end_time).substring(0, 5)
+      ...row,
+      start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
+      end_time: String(row.end_time).substring(0, 5)
     }));
-    
+
     res.json(formattedBookings);
 
   } catch (error) {
@@ -194,7 +195,7 @@ export const getRoomStatus = async (req, res) => {
   const { id } = req.params;
 
   // ถ้าไม่ส่งวันที่มา ให้ใช้วันปัจจุบัน
-  const queryDate =  new Date().toISOString().split('T')[0];
+  const queryDate = new Date().toISOString().split('T')[0];
 
   try {
     // ดึงข้อมูลห้อง
@@ -271,9 +272,9 @@ export const createBookingForTeacher = async (req, res) => {
 
   // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
   if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)' 
+      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)'
     });
   }
 
@@ -283,9 +284,9 @@ export const createBookingForTeacher = async (req, res) => {
   const bookingDuration = endMins - startMins;
 
   if (bookingDuration > MAX_DURATION_MINUTES) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)` 
+      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)`
     });
   }
 
@@ -318,10 +319,10 @@ export const createBookingForTeacher = async (req, res) => {
     if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองวันย้อนหลังได้' });
     }
-    
+
     // เช็คเวลาละเอียด (กรณีจองวันนี้ แต่เวลาผ่านไปแล้ว)
     if (bookingStart < now) {
-       return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
+      return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
 
     //  ตรวจสอบว่าห้องว่างไหม?
@@ -339,7 +340,7 @@ export const createBookingForTeacher = async (req, res) => {
 
     if (scheduleConflict.rows.length > 0) {
       const conflict = scheduleConflict.rows[0];
-      return res.status(409).json({ 
+      return res.status(409).json({
         message: `ไม่สามารถจองได้ เนื่องจากห้องนี้มีเรียนวิชา: ${conflict.subject_name}`,
         conflict_type: 'schedule',
         time: `${conflict.start_time} - ${conflict.end_time}`
@@ -354,20 +355,20 @@ export const createBookingForTeacher = async (req, res) => {
        AND (start_time < $4 AND end_time > $3)
        AND status IN ('approved', 'pending')
        FOR UPDATE`,
-      [room_id, date, start_time, end_time] 
+      [room_id, date, start_time, end_time]
     );
-    
+
     if (bookingConflict.rows.length > 0) {
       const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
 
       if (approvedBooking) {
-        return res.status(409).json({ 
-            message: 'ไม่สามารถจองได้ เนื่องจากช่วงเวลานี้ได้รับการอนุมัติแล้ว',
-            status: 'approved' 
+        return res.status(409).json({
+          message: 'ไม่สามารถจองได้ เนื่องจากช่วงเวลานี้ได้รับการอนุมัติแล้ว',
+          status: 'approved'
         });
-      } 
-      
-      return res.status(400).json({ 
+      }
+
+      return res.status(400).json({
         message: 'ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาเลือกเวลาอื่น)',
         status: 'pending'
       });
@@ -384,9 +385,9 @@ export const createBookingForTeacher = async (req, res) => {
     );
 
     // 4. ส่ง response
-    res.status(201).json({ 
-        message: 'ส่งคำขอจองสำเร็จ', 
-        bookingId: bookingId 
+    res.status(201).json({
+      message: 'ส่งคำขอจองสำเร็จ',
+      bookingId: bookingId
     });
 
   } catch (error) {
@@ -401,7 +402,7 @@ export const createBookingForStaff = async (req, res) => {
 
   const { room_id, purpose, date, start_time, end_time } = req.body;
 
-// แปลงเวลาเป็นนาที
+  // แปลงเวลาเป็นนาที
   const startMins = timeToMinutes(start_time);
   const endMins = timeToMinutes(end_time);
 
@@ -411,9 +412,9 @@ export const createBookingForStaff = async (req, res) => {
 
   // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
   if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)' 
+      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)'
     });
   }
 
@@ -423,14 +424,14 @@ export const createBookingForStaff = async (req, res) => {
   const bookingDuration = endMins - startMins;
 
   if (bookingDuration > MAX_DURATION_MINUTES) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)` 
+      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)`
     });
   }
-  
+
   // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (user_id) และผู้อนุมัติ (approved_by)
-  const staff_id = req.user.user_id; 
+  const staff_id = req.user.user_id;
 
   try {
 
@@ -448,10 +449,10 @@ export const createBookingForStaff = async (req, res) => {
     if (bookingDate < today) {
       return res.status(400).json({ message: 'ไม่สามารถจองเวลาย้อนหลังได้' });
     }
-    
+
     // เช็คเวลาละเอียด (กรณีจองวันนี้ แต่เวลาผ่านไปแล้ว)
     if (bookingStart < now) {
-       return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
+      return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
     // ให้ยามไปเช็คสถานะห้องก่อนว่าเปิดให้ใช้ไหม?
     const checkRoomQuery = `
@@ -463,9 +464,9 @@ export const createBookingForStaff = async (req, res) => {
 
     // ดักกรณีพิมพ์รหัสห้องผิด แล้วหาห้องไม่เจอ
     if (roomResult.rowCount === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "ไม่พบข้อมูลห้องนี้ในระบบ" 
+      return res.status(404).json({
+        success: false,
+        message: "ไม่พบข้อมูลห้องนี้ในระบบ"
       });
     }
 
@@ -473,9 +474,9 @@ export const createBookingForStaff = async (req, res) => {
 
     // ดักจับห้องที่ถูกปิด (is_active = false) หรือ กำลังซ่อม (repair = true)
     if (room.repair === true) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "ไม่สามารถจองได้ เนื่องจากห้องนี้ถูกระงับการใช้งานชั่วคราว" 
+      return res.status(400).json({
+        success: false,
+        message: "ไม่สามารถจองได้ เนื่องจากห้องนี้ถูกระงับการใช้งานชั่วคราว"
       });
     }
 
@@ -493,7 +494,7 @@ export const createBookingForStaff = async (req, res) => {
 
     if (scheduleConflict.rows.length > 0) {
       const conflict = scheduleConflict.rows[0];
-      return res.status(409).json({ 
+      return res.status(409).json({
         message: `ไม่สามารถจองได้ เนื่องจากห้องนี้มีเรียนวิชา: ${conflict.subject_name}`,
         conflict_type: 'schedule',
         time: `${conflict.start_time} - ${conflict.end_time}`
@@ -509,21 +510,21 @@ export const createBookingForStaff = async (req, res) => {
        AND status IN ('approved', 'pending')`,
       [room_id, date, start_time, end_time]
     );
-    
+
     if (bookingConflict.rows.length > 0) {
       const approvedBooking = bookingConflict.rows.find(b => b.status === 'approved');
 
       // ถ้ามีคนได้ Approved แล้ว -> จองไม่ได้แน่นอน
       if (approvedBooking) {
-        return res.status(409).json({ 
-            message: 'ไม่สามารถจองได้ เนื่องจากช่วงเวลานี้ได้รับการอนุมัติแล้ว',
-            status: 'approved' 
+        return res.status(409).json({
+          message: 'ไม่สามารถจองได้ เนื่องจากช่วงเวลานี้ได้รับการอนุมัติแล้ว',
+          status: 'approved'
         });
-      } 
-      
+      }
+
       // ถ้ามีคน Pending อยู่ -> Staff มีสิทธิ์เลือกว่าจะทำยังไง
       // แต่ในที่นี้เราจะ Block ไว้ก่อนเพื่อกันการจองซ้อน (หรือคุณจะยอมให้ Staff แทรกก็ได้)
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาตรวจสอบรายการ Pending ก่อน)',
         status: 'pending'
       });
@@ -540,10 +541,10 @@ export const createBookingForStaff = async (req, res) => {
     );
 
     // ส่ง response
-    res.status(201).json({ 
-        message: 'จองห้องสำเร็จ (อนุมัติทันที)', 
-        bookingId: bookingId,
-        status: 'approved'
+    res.status(201).json({
+      message: 'จองห้องสำเร็จ (อนุมัติทันที)',
+      bookingId: bookingId,
+      status: 'approved'
     });
 
   } catch (error) {
@@ -560,8 +561,7 @@ const emailCooldowns = new Map();
 // อัปเดตสถานะการจอง (Approve / Reject) for role staff only !!!!!!
 export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
-  const { status, reject_reason } = req.body; // รับ reject_reason มาด้วยเผื่อกรณีปฏิเสธ
-
+  const { status, cancel_reason } = req.body; // รับ cancel_reason มาด้วยเผื่อกรณีปฏิเสธ
 
   if (!['approved', 'rejected', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
@@ -570,9 +570,9 @@ export const updateBookingStatus = async (req, res) => {
   try {
     const updateResult = await pool.query(
       `UPDATE public."Booking" 
-       SET status = $1, approved_by = $2
-       WHERE booking_id = $3 
-       RETURNING *`, 
+      SET status = $1, approved_by = $2
+      WHERE booking_id = $3 
+       RETURNING *`,
       [status, req.user.user_id, id]
     );
 
@@ -584,24 +584,21 @@ export const updateBookingStatus = async (req, res) => {
 
     const details = await pool.query(
       `SELECT u.email, u.name, u.surname, r.room_id, r.room_type 
-       FROM public."Booking" b
-       JOIN public."Users" u ON b.user_id = u.user_id
-       JOIN public."Rooms" r ON b.room_id = r.room_id
-       WHERE b.booking_id = $1`,
+      FROM public."Booking" b
+      JOIN public."Users" u ON b.user_id = u.user_id
+      JOIN public."Rooms" r ON b.room_id = r.room_id
+      WHERE b.booking_id = $1`,
       [id]
     );
 
     if (details.rows.length > 0) {
-
       const { email, name, surname, room_id, room_type } = details.rows[0];
-      
       const teacherFullName = `${name} ${surname}`;
-      
-      const displayRoomName =  room_id || room_type; 
+      const displayRoomName = room_id || room_type;
 
       // ระบบ Rate Limit สำหรับการส่งอีเมล (Anti-Spam)
-      const cooldownKey = `booking_${id}_${status}`; 
-      const COOLDOWN_MINUTES = 5; 
+      const cooldownKey = `booking_${id}_${status}`;
+      const COOLDOWN_MINUTES = 5;
 
       let shouldSendEmail = true;
 
@@ -632,24 +629,24 @@ export const updateBookingStatus = async (req, res) => {
         sendBookingStatusEmail(email, {
           teacher_name: teacherFullName,
           status: status,
-          room_name: displayRoomName, 
+          room_name: displayRoomName,
           room_type: room_type,
-          date: formattedDate,           
-          start_time: formattedStartTime, 
-          end_time: formattedEndTime,     
-          reject_reason: reject_reason || '' 
+          date: formattedDate,
+          start_time: formattedStartTime,
+          end_time: formattedEndTime,
+          cancel_reason: cancel_reason || ''
         });
       }
     }
 
-    res.json({ 
-      message: `อัปเดตสถานะเป็น ${status} เรียบร้อยแล้ว`, 
-      booking: booking 
+    res.json({
+      message: `อัปเดตสถานะเป็น ${status} เรียบร้อยแล้ว`,
+      booking: booking
     });
 
     // บันทึกการกระทำที่สำคัญ
     logger.info('Booking Status Changed', {
-      action_by_user_id: req.user.user_id, 
+      action_by_user_id: req.user.user_id,
       target_booking_id: id,
       new_status: status,
       ip: req.ip
@@ -664,13 +661,13 @@ export const updateBookingStatus = async (req, res) => {
 // /bookings/allBookingSpecific/:roomId
 // สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา เพื่อใช้ในปฐิทิน
 export const getAllBookingSpecific = async (req, res) => {
-    const { roomId } = req.params;
-    const { status } = req.query;
+  const { roomId } = req.params;
+  const { status } = req.query;
 
-    try {
-        const statusArray = status ? status.split(',') : ['approved'];
+  try {
+    const statusArray = status ? status.split(',') : ['approved'];
 
-        const query = `
+    const query = `
             SELECT 
                 b.booking_id,
                 b.room_id,
@@ -685,30 +682,30 @@ export const getAllBookingSpecific = async (req, res) => {
             JOIN public."Users" u ON b.user_id = u.user_id
             WHERE b.room_id = $1 AND b.status = ANY($2::text[])
         `;
-        
-        // ส่ง Array เข้าไปให้ PostgreSQL
-        const result = await pool.query(query, [roomId, statusArray]);
- 
-        res.json(result.rows); 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Internal Server Error" });
-    }
+
+    // ส่ง Array เข้าไปให้ PostgreSQL
+    const result = await pool.query(query, [roomId, statusArray]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 };
 
 // /bookings/allBooking
 // สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" หรือ "ยกเลิกแล้ว" ในทุกห้อง
 export const getAllBooking = async (req, res) => {
-    const { status } = req.query; 
-    try {
-        // แปลง status เป็น array รองรับทั้ง string เดียวและหลายค่า
-        const statusList = status
-            ? Array.isArray(status) ? status : status.split(',')
-            : ['approved', 'cancel'];
+  const { status } = req.query;
+  try {
+    // แปลง status เป็น array รองรับทั้ง string เดียวและหลายค่า
+    const statusList = status
+      ? Array.isArray(status) ? status : status.split(',')
+      : ['approved', 'cancel'];
 
-        const placeholders = statusList.map((_, i) => `$${i + 1}`).join(', ');
+    const placeholders = statusList.map((_, i) => `$${i + 1}`).join(', ');
 
-        const query = `
+    const query = `
             SELECT 
                 b.booking_id,
                 b.room_id, 
@@ -724,14 +721,14 @@ export const getAllBooking = async (req, res) => {
             WHERE b.status = ANY(ARRAY[${placeholders}])
             ORDER BY b.date DESC, b.start_time ASC
         `;
-        
-        const result = await pool.query(query, statusList);
-        
-        res.json(result.rows); 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Internal Server Error" });
-    }
+
+    const result = await pool.query(query, statusList);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 };
 
 // /bookings/my-history
@@ -748,7 +745,7 @@ export const getMyBookings = async (req, res) => {
          b.end_time, 
          b.purpose, 
          b.status,
-         b.reject_reason,
+         b.cancel_reason,
          r.room_id
        FROM public."Booking" b
        JOIN public."Rooms" r ON b.room_id = r.room_id
@@ -769,7 +766,7 @@ export const getMyBookings = async (req, res) => {
 // ยกเลิกการจอง (Cancel Booking)
 export const cancelBooking = async (req, res) => {
   const { id } = req.params; // Booking ID ที่จะยกเลิก
-  const { cancel_reason } = req.body || {}; 
+  const { cancel_reason } = req.body || {};
   const actionUserId = req.user.user_id;
   const userRole = req.user.role;
 
@@ -779,7 +776,7 @@ export const cancelBooking = async (req, res) => {
        FROM public."Booking" b
        JOIN public."Users" u ON b.user_id = u.user_id
        WHERE b.booking_id = $1 
-       AND (b.user_id = $2 OR $3 = 'staff')`, 
+       AND (b.user_id = $2 OR $3 = 'staff')`,
       [id, actionUserId, userRole]
     );
 
@@ -791,14 +788,14 @@ export const cancelBooking = async (req, res) => {
 
     const bookingDate = new Date(booking.date);
     const today = new Date();
-    today.setHours(0, 0, 0, 0); 
+    today.setHours(0, 0, 0, 0);
 
     if (bookingDate < today) {
-        return res.status(400).json({ message: 'ไม่สามารถยกเลิกรายการย้อนหลังได้' });
+      return res.status(400).json({ message: 'ไม่สามารถยกเลิกรายการย้อนหลังได้' });
     }
 
     if (['rejected', 'cancelled'].includes(booking.status)) {
-        return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกหรือปฏิเสธไปแล้ว' });
+      return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกหรือปฏิเสธไปแล้ว' });
     }
 
     // อัปเดตสถานะใน Database
@@ -812,45 +809,45 @@ export const cancelBooking = async (req, res) => {
     // 📧 โซนส่งอีเมลแจ้งเตือน (แยกตามบริบท)
     // จัดฟอร์แมตข้อมูลเตรียมส่งอีเมล (ใช้ร่วมกันทั้ง 2 กรณี)
     const formattedDate = new Date(booking.date).toLocaleDateString('th-TH', {
-        year: 'numeric', month: 'long', day: 'numeric'
+      year: 'numeric', month: 'long', day: 'numeric'
     });
     const timeSlot = `${booking.start_time.substring(0, 5)} - ${booking.end_time.substring(0, 5)} น.`;
     const teacherFullName = `${booking.name} ${booking.surname}`;
 
     // กรณีที่ 1: Staff เป็นคนกดยกเลิกการจองของ Teacher
     if (actionUserId !== booking.user_id) {
-        sendBookingCancelledEmail(
-            booking.email,
-            teacherFullName,
-            booking.room_id,
-            formattedDate,
-            timeSlot,
-            cancel_reason || 'เจ้าหน้าที่ได้ทำการยกเลิกการจองนี้'
-        );
-        console.log(`[System] สั่งส่งอีเมลแจ้งยกเลิกการจองให้ ${booking.email} เรียบร้อยแล้ว`);
-    } 
-    
+      sendBookingCancelledEmail(
+        booking.email,
+        teacherFullName,
+        booking.room_id,
+        formattedDate,
+        timeSlot,
+        cancel_reason || 'เจ้าหน้าที่ได้ทำการยกเลิกการจองนี้'
+      );
+      console.log(`[System] สั่งส่งอีเมลแจ้งยกเลิกการจองให้ ${booking.email} เรียบร้อยแล้ว`);
+    }
+
     // กรณีที่ 2: Teacher เป็นคนกดยกเลิกการจองของตัวเอง
     else if (actionUserId === booking.user_id && userRole !== 'staff') {
-        // ดึงอีเมลของ Staff ทั้งหมดจาก Database
-        const staffQuery = await pool.query(
-            `SELECT email FROM public."Users" WHERE role = 'staff'`
-        );
-        
-        // แปลงผลลัพธ์ให้เป็น Array ของอีเมล (เช่น ['staff1@ku.th', 'staff2@ku.th'])
-        const staffEmails = staffQuery.rows.map(row => row.email);
+      // ดึงอีเมลของ Staff ทั้งหมดจาก Database
+      const staffQuery = await pool.query(
+        `SELECT email FROM public."Users" WHERE role = 'staff'`
+      );
 
-        if (staffEmails.length > 0) {
-            sendTeacherCancelledRoomEmailToStaff(
-                staffEmails,
-                teacherFullName,
-                booking.room_id,
-                formattedDate,
-                timeSlot,
-                cancel_reason || 'อาจารย์ผู้จองได้ทำการยกเลิก/งดใช้ห้องด้วยตนเอง'
-            );
-            console.log(`[System] สั่งส่งอีเมลแจ้งเตือน Staff เรื่องอาจารย์ ${teacherFullName} งดใช้ห้องเรียบร้อยแล้ว`);
-        }
+      // แปลงผลลัพธ์ให้เป็น Array ของอีเมล (เช่น ['staff1@ku.th', 'staff2@ku.th'])
+      const staffEmails = staffQuery.rows.map(row => row.email);
+
+      if (staffEmails.length > 0) {
+        sendTeacherCancelledRoomEmailToStaff(
+          staffEmails,
+          teacherFullName,
+          booking.room_id,
+          formattedDate,
+          timeSlot,
+          cancel_reason || 'อาจารย์ผู้จองได้ทำการยกเลิก/งดใช้ห้องด้วยตนเอง'
+        );
+        console.log(`[System] สั่งส่งอีเมลแจ้งเตือน Staff เรื่องอาจารย์ ${teacherFullName} งดใช้ห้องเรียบร้อยแล้ว`);
+      }
     }
 
     res.json({ message: 'ยกเลิกการจองเรียบร้อยแล้ว' });
@@ -911,7 +908,7 @@ export const editBooking = async (req, res) => {
 
     // ห้ามแก้รายการที่ถูกยกเลิกไปแล้ว
     if (oldBooking.status === 'cancelled') {
-        return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้' });
+      return res.status(400).json({ message: 'รายการนี้ถูกยกเลิกไปแล้ว ไม่สามารถแก้ไขได้' });
     }
 
     // ตรวจสอบเวลาชน
@@ -927,7 +924,7 @@ export const editBooking = async (req, res) => {
 
     if (scheduleConflict.rows.length > 0) {
       const conflict = scheduleConflict.rows[0];
-      return res.status(409).json({ 
+      return res.status(409).json({
         message: `แก้ไขไม่ได้ เนื่องจากเวลาชนกับวิชา: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
       });
     }
@@ -940,20 +937,20 @@ export const editBooking = async (req, res) => {
        AND (start_time < $4 AND end_time > $3)
        AND status IN ('approved', 'pending')
        AND booking_id != $5`, // ห้ามเช็คเจอกับตัวเอง (Exclude current ID)
-      [roomId, date, start_time, end_time, id] 
+      [roomId, date, start_time, end_time, id]
     );
 
     if (bookingConflict.rows.length > 0) {
       // ถ้าเจอ แสดงว่าเป็นของคนอื่นแน่นอน (เพราะกันตัวเองออกไปแล้ว)
-      return res.status(409).json({ 
-          message: 'แก้ไขไม่ได้ เนื่องจากช่วงเวลานี้มีคนอื่นจองแล้ว' 
+      return res.status(409).json({
+        message: 'แก้ไขไม่ได้ เนื่องจากช่วงเวลานี้มีคนอื่นจองแล้ว'
       });
     }
 
     // อัปเดตข้อมูล (Update)
     // ต้องรีเซ็ตสถานะเป็น 'pending' เสมอ เพราะมีการเปลี่ยนเวลา/จุดประสงค์
     // (ยกเว้น Admin แก้เอง อาจจะให้ Approved เลยก็ได้ แล้วแต่ Logic)
-    
+
     let newStatus = 'pending';
     if (role === 'admin') newStatus = 'approved'; // ถ้า Admin แก้ ให้ผ่านเลย (Optional)
 
@@ -968,8 +965,8 @@ export const editBooking = async (req, res) => {
       [purpose, date, start_time, end_time, newStatus, id]
     );
 
-    res.json({ 
-      message: 'แก้ไขการจองสำเร็จ (สถานะถูกปรับเป็นรออนุมัติใหม่)', 
+    res.json({
+      message: 'แก้ไขการจองสำเร็จ (สถานะถูกปรับเป็นรออนุมัติใหม่)',
       booking_id: id,
       status: newStatus
     });
@@ -997,7 +994,7 @@ export const getMyActiveBookings = async (req, res) => {
        WHERE b.user_id = $1
        AND b.date >= CURRENT_DATE 
        AND b.status IN ('pending', 'approved') 
-       ORDER BY b.date ASC, b.start_time ASC`, 
+       ORDER BY b.date ASC, b.start_time ASC`,
       [user_id]
     );
 
@@ -1007,7 +1004,7 @@ export const getMyActiveBookings = async (req, res) => {
       date: row.formatted_date, // 👈 3. เอาข้อความวันที่ที่ถูกต้อง ไปทับตัวแปร date อันเดิมที่เพี้ยน
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
-      can_edit_delete: true 
+      can_edit_delete: true
     }));
     res.json(bookings);
 
@@ -1060,7 +1057,7 @@ export const getMyBookingHistory = async (req, res) => {
           temporarily_closed
       FROM public."Schedules"
       WHERE user_id = $1 
-      AND temporarily_closed = TRUE`, 
+      AND temporarily_closed = TRUE`,
       [user_id]
     );
 
@@ -1099,12 +1096,12 @@ export const getMyBookingHistory = async (req, res) => {
 
     // รวมและเรียงลำดับ (เรียงจากล่าสุดไปเก่าสุด)
     const allHistory = [...bookings, ...schedules].sort((a, b) => {
-        // ตอนนี้ a.date และ b.date เป็น String แบบ 'YYYY-MM-DD' ชัวร์ๆ แล้ว 
-        // การเอามาใส่ new Date() ตรงนี้จะไม่มีปัญหาเรื่อง Timezone ขยับวันครับ
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        if (dateB - dateA !== 0) return dateB - dateA; 
-        return a.start_time.localeCompare(b.start_time);
+      // ตอนนี้ a.date และ b.date เป็น String แบบ 'YYYY-MM-DD' ชัวร์ๆ แล้ว 
+      // การเอามาใส่ new Date() ตรงนี้จะไม่มีปัญหาเรื่อง Timezone ขยับวันครับ
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      if (dateB - dateA !== 0) return dateB - dateA;
+      return a.start_time.localeCompare(b.start_time);
     });
 
     res.json(allHistory);

@@ -1,7 +1,7 @@
 import { pool } from '../config/db.js';
 import ExcelJS from 'exceljs';
 import crypto from 'crypto';
-import { sendScheduleBookingCancelledEmail, sendScheduleReclaimCancelledEmail, sendBookingCancelledEmail } from '../services/mailer.js';
+import { sendScheduleBookingCancelledEmail, sendScheduleReclaimCancelledEmail, sendBookingCancelledEmail, sendScheduleEditConflictEmail } from '../services/mailer.js';
 
 // ฟังก์ชันสำหรับ Import Excel ลง Table Semesters
 const formatExcelData = (value, type = 'time') => {
@@ -615,7 +615,7 @@ export const updateScheduleStatus = async (req, res) => {
     // ขั้นตอนที่ 1: ดึงข้อมูลตารางเรียน + JOIN ข้อมูลอาจารย์เจ้าของวิชา
     const scheduleResult = await client.query(
       `SELECT s.*, 
-              TO_CHAR(s.date, 'YYYY-MM-DD') AS formatted_date, -- แปลงวันที่ป้องกัน Timezone เพี้ยน
+              TO_CHAR(s.date, 'YYYY-MM-DD') AS formatted_date,
               u.email AS owner_email, 
               u.name AS owner_name 
       FROM public."Schedules" s
@@ -644,17 +644,17 @@ export const updateScheduleStatus = async (req, res) => {
     `;
     const updatedSchedule = await client.query(updateScheduleSql, [
       temporarily_closed, 
-      closed_reason || null, // ถ้าไม่ได้ส่งเหตุผลมาให้บันทึกเป็น null
+      closed_reason || null,
       id
     ]);
 
     let canceledBookingsCount = 0;
 
     // ---------------------------------------------------------
-    // 🚨 ขั้นตอนที่ 3: จัดการระบบส่งอีเมล และเตะคิวจองที่ทับซ้อน
+    // ขั้นตอนที่ 3: จัดการระบบส่งอีเมล และเตะคิวจองที่ทับซ้อน
     // ---------------------------------------------------------
 
-    // 🌟 กรณีที่ 3.1: Staff กด "งดใช้ห้อง" (แจ้งเตือนอาจารย์)
+    // กรณีที่ 3.1: Staff กด "งดใช้ห้อง" (แจ้งเตือนอาจารย์)
     if (temporarily_closed === true && role.toLowerCase().trim() === 'staff') {
         // แปลงเวลาให้ดูสวยงาม
         const timeSlot = `${String(schedule.start_time).substring(0,5)} - ${String(schedule.end_time).substring(0,5)} น.`;
@@ -675,7 +675,7 @@ export const updateScheduleStatus = async (req, res) => {
     }
 
 
-    // 🌟 กรณีที่ 3.2: อาจารย์/Staff "ยกเลิกการงดใช้ห้อง" (ต้องเตะคิวที่จองทับซ้อนออก)
+    // กรณีที่ 3.2: อาจารย์/Staff "ยกเลิกการงดใช้ห้อง" (ต้องเตะคิวที่จองทับซ้อนออก)
     if (temporarily_closed === false) {
       const conflictParams = [
         schedule.room_id,          // $1
@@ -684,9 +684,9 @@ export const updateScheduleStatus = async (req, res) => {
         schedule.end_time          // $4
       ];
 
-      // 🔍 ค้นหาคิวที่ทับซ้อน 
+      // ค้นหาคิวที่ทับซ้อน (เพิ่มการดึง b.status ออกมาด้วย)
       const findConflictsSql = `
-        SELECT b.booking_id, b.start_time, b.end_time, b.purpose, 
+        SELECT b.booking_id, b.status, b.start_time, b.end_time, b.purpose, 
               u.email, u.name as user_name
         FROM public."Booking" b
         JOIN public."Users" u ON b.user_id = u.user_id
@@ -698,23 +698,40 @@ export const updateScheduleStatus = async (req, res) => {
       `;
       const conflictUsers = await client.query(findConflictsSql, conflictParams);
 
-      // ❌ ถ้าเจอคนจองทับซ้อน ให้ทำการยกเลิกและส่งอีเมลแจ้ง
+      // ถ้าเจอคนจองทับซ้อน ให้ทำการยกเลิก/ปฏิเสธ พร้อมบันทึกเหตุผลและส่งอีเมลแจ้ง
       if (conflictUsers.rows.length > 0) {
-        const bookingIdsToCancel = conflictUsers.rows.map(r => r.booking_id);
-        const cancelConflictSql = `
-          UPDATE public."Booking"
-          SET status = 'cancelled'
-          WHERE booking_id = ANY($1::varchar[])
-        `;
         
-        await client.query(cancelConflictSql, [bookingIdsToCancel]);
+        // แยกคิวตามสถานะเดิม
+        const pendingIds = conflictUsers.rows.filter(r => r.status === 'pending').map(r => r.booking_id);
+        const approvedIds = conflictUsers.rows.filter(r => r.status === 'approved').map(r => r.booking_id);
+        
+        // ข้อความเหตุผลที่จะเก็บลง Database
+        const cancelReasonText = `อาจารย์เจ้าของวิชา (${schedule.subject_name}) ดึงห้องคืนเพื่อใช้สอนตามปกติ`;
+
+        // 📝 อัปเดตรายการ Pending -> เปลี่ยนเป็น Rejected พร้อมใส่เหตุผล
+        if (pendingIds.length > 0) {
+          await client.query(`
+            UPDATE public."Booking"
+            SET status = 'rejected', cancel_reason = $2
+            WHERE booking_id = ANY($1::varchar[])
+          `, [pendingIds, cancelReasonText]);
+        }
+
+        // 📝 อัปเดตรายการ Approved -> เปลี่ยนเป็น Cancelled พร้อมใส่เหตุผล
+        if (approvedIds.length > 0) {
+          await client.query(`
+            UPDATE public."Booking"
+            SET status = 'cancelled', cancel_reason = $2
+            WHERE booking_id = ANY($1::varchar[])
+          `, [approvedIds, cancelReasonText]);
+        }
+
         canceledBookingsCount = conflictUsers.rows.length;
 
-        // 📧 วนลูปส่งอีเมลแจ้งเตือนอาจารย์แต่ละท่าน
+        // 📧 วนลูปส่งอีเมลแจ้งเตือนผู้จองแต่ละท่าน
         conflictUsers.rows.forEach(user => {
           const timeSlot = `${String(user.start_time).substring(0,5)} - ${String(user.end_time).substring(0,5)} น.`;
           
-          // ใช้ schedule.owner_name ที่เราดึงเตรียมไว้ตั้งแต่ขั้นตอนที่ 1 ได้เลย
           sendScheduleReclaimCancelledEmail(
             user.email,
             user.user_name,
@@ -723,7 +740,8 @@ export const updateScheduleStatus = async (req, res) => {
             timeSlot,
             user.purpose,
             schedule.owner_name,    // ชื่ออาจารย์เจ้าของวิชา
-            schedule.subject_name   // ชื่อวิชาที่ดึงห้องคืน
+            schedule.subject_name,  // ชื่อวิชาที่ดึงห้องคืน
+            user.status             // 👈 ส่ง status เดิมเข้าไปในฟังก์ชันอีเมล
           ).catch(err => console.error("Failed to email student:", err));
         });
       }
@@ -1229,21 +1247,21 @@ export const showSubjectSchedule = async (req, res) => {
 export const editSubjectDataSchedule = async (req, res) => {
   const { unique_schedules } = req.params; 
   const {
-    old_subject_name, // ข้อมูลเดิมสำหรับเป็นเป้าหมายลบ
-    old_sec,          // ข้อมูลเดิมสำหรับเป็นเป้าหมายลบ
+    old_subject_name, 
+    old_sec,          
     room_id,
     subject_name,     
     teacher_name,
     teacher_surname,
     start_time,
     end_time,
-    date,             // วันที่เริ่มต้นเรียน (YYYY-MM-DD)
+    date,             
     sec,              
-    repeat,           // จำนวนสัปดาห์
-    semester_id       // (Optional)
+    repeat,           
+    semester_id,
+    force_cancel     
   } = req.body;
 
-  // 1. Validation เช็คข้อมูลเบื้องต้น
   if (!unique_schedules || !old_subject_name || !old_sec) {
     return res.status(400).json({ message: 'ข้อมูลระบุวิชาเดิมไม่ครบถ้วน' });
   }
@@ -1251,13 +1269,11 @@ export const editSubjectDataSchedule = async (req, res) => {
     return res.status(400).json({ message: 'ข้อมูลวันที่เริ่มหรือจำนวนรอบ (repeat) ไม่ถูกต้อง' });
   }
 
-  // 🚨 สร้าง Connection พิเศษสำหรับทำ Transaction
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN'); // เริ่มต้น Transaction
+    await client.query('BEGIN'); 
 
-    // 2. 🔍 ค้นหา user_id ของอาจารย์
     const userResult = await client.query(
       `SELECT user_id FROM public."Users" 
        WHERE name = $1 AND surname = $2`,
@@ -1268,8 +1284,6 @@ export const editSubjectDataSchedule = async (req, res) => {
       throw { status: 404, message: 'ไม่พบข้อมูลอาจารย์ท่านนี้ในระบบ (ชื่อหรือนามสกุลไม่ตรง)' };
     }
     const teacherUserId = userResult.rows[0].user_id;
-
-    // 3. 💾 ดึงข้อมูลเก่ามา 1 แถว เพื่อสำรอง semester_id เผื่อหน้าเว็บไม่ได้ส่งมา
     const oldDataResult = await client.query(
        `SELECT semester_id
         FROM public."Schedules"
@@ -1285,62 +1299,161 @@ export const editSubjectDataSchedule = async (req, res) => {
     const oldData = oldDataResult.rows[0];
     const finalSemesterId = semester_id || oldData.semester_id;
 
-    // 4. 🗑️ ลบข้อมูล "ของเก่า" ทั้งหมด (อิงตาม unique_schedules, ชื่อวิชาเก่า, และ sec เก่า)
+    // 🗑️ ลบของเก่าทิ้งไปก่อน (ไม่ต้องห่วง ถ้าข้างล่างพัง มันจะกู้คืนให้อัตโนมัติ)
     await client.query(
       `DELETE FROM public."Schedules"
        WHERE unique_schedules = $1 AND subject_name = $2 AND sec = $3`,
       [unique_schedules, old_subject_name, old_sec]
     );
 
-    // 5. 🔄 วนลูป Insert สร้างข้อมูล "ของใหม่"
-    const insertQuery = `
-      INSERT INTO public."Schedules"
-      (schedule_id, unique_schedules, room_id, subject_name, user_id, teacher_name, teacher_surname, date, start_time, end_time, sec, semester_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-    `;
-
+    let canceledBookingsTotal = 0; 
     const baseDate = new Date(date);
 
+    // 🔄 วนลูป Insert และ Check ทีละสัปดาห์
     for (let i = 0; i < repeat; i++) {
-      // 5.1 บวกวันที่ทีละ 7 วัน
       const insertDate = new Date(baseDate);
       insertDate.setDate(baseDate.getDate() + (i * 7));
 
-      // 5.2 หั่นเอาเฉพาะ YYYY-MM-DD แบบตรงไปตรงมา
       const year = insertDate.getFullYear();
       const month = String(insertDate.getMonth() + 1).padStart(2, '0');
       const day = String(insertDate.getDate()).padStart(2, '0');
       const formattedDate = `${year}-${month}-${day}`;
 
-      // 5.3 สร้าง schedule_id ใหม่ (เป็น random text ที่ไม่ซ้ำ)
-      const scheduleId = crypto.randomUUID();
+      // =========================================================
+      // 🚨 1. เช็คว่าทับซ้อนกับ "ตารางเรียนวิชาอื่น" (Schedules) หรือไม่?
+      // =========================================================
+      const checkScheduleConflictSql = `
+        SELECT subject_name, sec 
+        FROM public."Schedules"
+        WHERE room_id = $1
+          AND date = $2
+          AND start_time < $4
+          AND end_time > $3
+        LIMIT 1
+      `;
+      const scheduleConflict = await client.query(checkScheduleConflictSql, [
+        room_id, formattedDate, start_time, end_time
+      ]);
 
-      // 5.4 Insert ลง Database ทีละสัปดาห์
+      // ถ้าเจอว่าชนกับวิชาอื่น ให้โยน Error ทันที (จะเด้งไปเข้า catch block และ Rollback)
+      if (scheduleConflict.rows.length > 0) {
+        throw { 
+          status: 400, 
+          message: `เวลาหรือวันที่ดังกล่าว ทับซ้อนกับตารางเรียนอื่น` 
+        };
+      }
+
+      // =========================================================
+      // 🚨 2. เช็คว่าทับซ้อนกับ "คิวจองห้อง" (Booking) หรือไม่?
+      // =========================================================
+      const findConflictsSql = `
+        SELECT b.booking_id, b.status, b.start_time, b.end_time, b.purpose, 
+              u.email, u.name as user_name
+        FROM public."Booking" b
+        JOIN public."Users" u ON b.user_id = u.user_id
+        WHERE b.room_id = $1
+          AND b.date = $2
+          AND b.start_time < $4
+          AND b.end_time > $3
+          AND b.status IN ('pending', 'approved')
+      `;
+      const conflictUsers = await client.query(findConflictsSql, [
+        room_id, formattedDate, start_time, end_time
+      ]);
+
+      if (conflictUsers.rows.length > 0) {
+        // 🛑 ถ้าพบคนจองทับซ้อน และยังไม่ได้กดยืนยัน (force_cancel) ให้เด้ง Pop-up
+        if (!force_cancel) {
+            throw { 
+                status: 409, 
+                code: 'BOOKING_CONFLICT',
+                message: `วันและเวลาดังกล่าวมีการจองห้องจำนวน ${conflictUsers.rows.length} รายการ\n คุณต้องการยกเลิกคำขอจองเหล่านั้น\nเพื่อใช้จัดตารางเรียนนี้หรือไม่?` 
+            };
+        }
+
+        // ✅ ถ้ากดยืนยันมาแล้ว ให้แยก Array ระหว่าง pending กับ approved
+        const pendingIds = conflictUsers.rows.filter(r => r.status === 'pending').map(r => r.booking_id);
+        const approvedIds = conflictUsers.rows.filter(r => r.status === 'approved').map(r => r.booking_id);
+        
+        // ข้อความเหตุผลที่จะเก็บลง Database
+        const cancelReasonText = `ทับซ้อนกับการปรับเปลี่ยนตารางเรียนรายวิชา ${subject_name}`;
+
+        // 📝 อัปเดตรายการ Pending -> Rejected
+        if (pendingIds.length > 0) {
+          await client.query(`
+            UPDATE public."Booking"
+            SET status = 'rejected', cancel_reason = $2
+            WHERE booking_id = ANY($1::varchar[])
+          `, [pendingIds, cancelReasonText]);
+        }
+
+        // 📝 อัปเดตรายการ Approved -> Cancelled
+        if (approvedIds.length > 0) {
+          await client.query(`
+            UPDATE public."Booking"
+            SET status = 'cancelled', cancel_reason = $2
+            WHERE booking_id = ANY($1::varchar[])
+          `, [approvedIds, cancelReasonText]);
+        }
+
+        canceledBookingsTotal += conflictUsers.rows.length;
+
+        // 📧 วนลูปส่งอีเมลแจ้งเตือน
+        conflictUsers.rows.forEach(user => {
+          const timeSlot = `${String(user.start_time).substring(0,5)} - ${String(user.end_time).substring(0,5)} น.`;
+          const fullTeacherName = `${teacher_name} ${teacher_surname}`;
+          
+          sendScheduleEditConflictEmail(
+            user.email,
+            user.user_name,
+            room_id,
+            formattedDate,
+            timeSlot,
+            user.purpose,
+            fullTeacherName, 
+            subject_name,
+            user.status 
+          ).catch(err => console.error("Failed to email student regarding schedule edit:", err));
+        });
+      }
+
+      // =========================================================
+      // 3. Insert ข้อมูลลง Database
+      // =========================================================
+      const scheduleId = crypto.randomUUID();
+      const insertQuery = `
+        INSERT INTO public."Schedules"
+        (schedule_id, unique_schedules, room_id, subject_name, user_id, teacher_name, teacher_surname, date, start_time, end_time, sec, semester_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `;
+
       await client.query(insertQuery, [
-        scheduleId,          // $1
-        unique_schedules,    // $2
-        room_id,             // $3
-        subject_name,        // $4
-        teacherUserId,       // $5
-        teacher_name,        // $6
-        teacher_surname,     // $7
-        formattedDate,       // $8
-        start_time,          // $9
-        end_time,            // $10
-        sec,                 // $11
-        finalSemesterId      // $12
+        scheduleId,          
+        unique_schedules,    
+        room_id,             
+        subject_name,        
+        teacherUserId,       
+        teacher_name,        
+        teacher_surname,     
+        formattedDate,       
+        start_time,          
+        end_time,            
+        sec,                 
+        finalSemesterId      
       ]);
     }
 
-    // 6. 🟢 ยืนยันการเปลี่ยนแปลงทั้งหมดลง Database
+    // 🟢 ยืนยันการเปลี่ยนแปลงทั้งหมด
     await client.query('COMMIT');
 
     res.json({ 
-      message: `แก้ไขและสร้างตารางเรียน ${subject_name} จำนวน ${repeat} สัปดาห์ เรียบร้อยแล้ว` 
+      message: `แก้ไขและสร้างตารางเรียน ${subject_name} จำนวน ${repeat} สัปดาห์ เรียบร้อยแล้ว`,
+      canceled_conflicts: canceledBookingsTotal 
     });
 
   } catch (error) {
-    // 🚨 Rollback ถ้าเกิดข้อผิดพลาด
+    // 🚨 สำคัญมาก: ถ้าระบบโยน Error ว่าตารางชนกัน มันจะวิ่งมาตรงนี้และสั่ง ROLLBACK ทันที!
+    // สิ่งที่เรา DELETE ไปในบรรทัดแรกๆ จะถูกกู้กลับคืนมาเหมือนไม่มีอะไรเกิดขึ้นครับ
     await client.query('ROLLBACK');
     console.error('Edit Subject Schedule Error:', error);
     
