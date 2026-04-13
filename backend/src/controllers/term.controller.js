@@ -17,9 +17,10 @@ export const fillInTerm = async (req, res) => {
 
   // 2. Validation: วนลูปเช็คข้อมูลแต่ละก้อนว่าถูกต้องไหม
   for (const item of terms) {
-    if (!item.term || !item.date) {
+    // 🚨 เปลี่ยนมาเช็ค start_date และ end_date
+    if (!item.term || !item.start_date || !item.end_date) {
       return res.status(400).json({ 
-        message: 'กรุณาระบุข้อมูล term และ date ให้ครบถ้วนในทุกรายการ' 
+        message: 'กรุณาระบุข้อมูล term, start_date และ end_date ให้ครบถ้วนในทุกรายการ' 
       });
     }
 
@@ -31,7 +32,12 @@ export const fillInTerm = async (req, res) => {
       });
     }
 
-    validTerms.push({ term: termLower, date: item.date });
+    // เก็บข้อมูลลง Array เพื่อเตรียม Save
+    validTerms.push({ 
+      term: termLower, 
+      start_date: item.start_date, 
+      end_date: item.end_date 
+    });
   }
 
   // 🚨 สร้าง Connection สำหรับทำ Transaction
@@ -40,12 +46,15 @@ export const fillInTerm = async (req, res) => {
   try {
     await client.query('BEGIN'); // เริ่มการทำงาน
 
-    // 3. เตรียมคำสั่ง Upsert
+    // 3. เตรียมคำสั่ง Upsert 
+    // 🚨 ปรับ SQL ให้รองรับ start_date และ end_date
     const query = `
-      INSERT INTO public."Terms" (term, date) 
-      VALUES ($1, $2)
+      INSERT INTO public."Terms" (term, start_date, end_date) 
+      VALUES ($1, $2, $3)
       ON CONFLICT (term) 
-      DO UPDATE SET date = EXCLUDED.date
+      DO UPDATE SET 
+        start_date = EXCLUDED.start_date,
+        end_date = EXCLUDED.end_date
       RETURNING *;
     `;
     
@@ -53,7 +62,8 @@ export const fillInTerm = async (req, res) => {
 
     // 4. วนลูปบันทึกข้อมูลทีละรายการ
     for (const item of validTerms) {
-      const dbResult = await client.query(query, [item.term, item.date]);
+      // 🚨 ส่ง Parameter ไป 3 ตัวตามลำดับ
+      const dbResult = await client.query(query, [item.term, item.start_date, item.end_date]);
       results.push(dbResult.rows[0]);
     }
 
@@ -76,15 +86,16 @@ export const fillInTerm = async (req, res) => {
 
 
 // GET /terms/showTerm
-// ฟังก์ชันสำหรับดึงข้อมูลเทอมและวันที่ทั้งหมด
+// ฟังก์ชันสำหรับดึงข้อมูลเทอมและช่วงเวลาทั้งหมด
 export const showTerm = async (req, res) => {
   try {
-    // ใช้ TO_CHAR เพื่อให้วันที่ส่งกลับไปเป็นฟอร์แมต YYYY-MM-DD แบบเป๊ะๆ ไม่เพี้ยนตาม Timezone
+    // 🚨 เปลี่ยนมาระบุ start_date และ end_date พร้อมใช้ TO_CHAR ป้องกัน Timezone เพี้ยน
     // และใช้ CASE เพื่อเรียงลำดับให้สวยงาม: first -> end -> summer
     const query = `
       SELECT 
         term, 
-        TO_CHAR(date, 'YYYY-MM-DD') AS date 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date,
+        TO_CHAR(end_date, 'YYYY-MM-DD') AS end_date
       FROM public."Terms"
       ORDER BY 
         CASE term
@@ -108,4 +119,3 @@ export const showTerm = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลเทอม' });
   }
 };
-

@@ -14,7 +14,9 @@ import { importClassSchedules,
     exportTermReport,
     showSubjectSchedule,
     editSubjectDataSchedule,
-    deleteSubjectSchedule
+    deleteSubjectSchedule,
+    showReport,
+    showReportForStaff
     } 
     from '../controllers/schedule.controller.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.middleware.js';
@@ -37,6 +39,10 @@ router.put('/:id', authenticateToken, authorizeRole('staff'), editScheduleLog);
 
 // 3. DELETE: ลบข้อมูลตารางเรียน (แม่และลูก) ทิ้งทั้งหมด
 router.delete('/:id', authenticateToken, authorizeRole('staff'), deleteScheduleLog);
+
+router.get('/showReport', authenticateToken, authorizeRole('staff', 'teacher'), showReport);
+
+router.get('/showReportForStaff', authenticateToken, authorizeRole('staff'), showReportForStaff);
 
 
 // ==========================================

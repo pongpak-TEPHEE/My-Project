@@ -43,8 +43,8 @@ export const startCleanupJob = () => {
     }
   });
 
-  // ลบ Booking เก่าตามรอบเทอม (รันทุกวันที่ 1 ของเดือน เวลา 00:00 น.)
-  cron.schedule('0 0 1 * *', async () => {
+  // ลบ Booking เก่าตามรอบเทอม (รันทุกวัน เวลา 00:00 น.)
+  cron.schedule('0 0 * * *', async () => {
     console.log('🧹 Running Booking Cleanup Job (Term-based)...');
     try {
       // 1. หาว่าปัจจุบันอยู่ในเทอมไหน และหาวันที่เริ่มต้นของเทอมนั้น

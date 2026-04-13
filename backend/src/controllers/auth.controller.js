@@ -132,7 +132,7 @@ export const verifyOTP = async (req, res) => {
         session_id: sessionId
       },
       process.env.JWT_SECRET,
-      { expiresIn: '30' } // { expiresIn: '15m' } กำหนดอายุ token เป็น 15 นาที
+      { expiresIn: '30m' } // { expiresIn: '15m' } กำหนดอายุ token เป็น 15 นาที
     );
 
     // 3. 🗝️ ดอกที่ 2: สร้าง Refresh Token (อายุยาว 7 วัน)
@@ -179,7 +179,7 @@ export const verifyOTP = async (req, res) => {
   }
 };
 
-
+// /auth//refresh-token
 // ฟังก์ชันต่ออายุ Access Token
 export const refreshToken = async (req, res) => {
   console.log("-------------------------------------\n");

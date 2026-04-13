@@ -1713,3 +1713,267 @@ export const exportTermReport = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการสร้างไฟล์รายงาน' });
   }
 };
+
+
+// router.get('schedules/showReport', authenticateToken, authorizeRole('staff', 'teacher'), showReport);
+export const showReport = async (req, res) => {
+  try {
+    // 💡 1. ระบุตัวบุคคล: สมมติว่าดึงมาจาก Token ของคนที่ Login อยู่
+    // (ถ้าเป็นแอดมินค้นหาให้คนอื่น อาจจะเปลี่ยนไปรับจาก req.params.id แทนได้ครับ)
+    const userId = req.user.user_id; 
+
+    // ==========================================
+    // 📅 2. คำนวณหาวันจันทร์ และวันอาทิตย์ ของสัปดาห์นี้
+    // ==========================================
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = วันอาทิตย์, 1 = วันจันทร์, ..., 6 = วันเสาร์
+    
+    // JS มองวันอาทิตย์คือวันแรกของสัปดาห์ (0) ถ้าเป็นวันอาทิตย์เราต้องถอยไป 6 วันเพื่อหาวันจันทร์
+    const distanceToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + distanceToMonday);
+    
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6); // วันอาทิตย์คือวันจันทร์ + 6 วัน
+
+    // ฟังก์ชันแปลงวันที่ให้เป็น YYYY-MM-DD เพื่อเอาไปค้นใน Database
+    const formatDate = (dateObj) => {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    const startDateStr = formatDate(monday);
+    const endDateStr = formatDate(sunday);
+
+    // ==========================================
+    // 🗄️ 3. ดึงข้อมูลจากฐานข้อมูล (ช่วงวันจันทร์ - อาทิตย์)
+    // ==========================================
+    // ดึงคิวการจอง (เอาเฉพาะที่ได้รับการอนุมัติแล้ว)
+    const bookingQuery = `
+      SELECT booking_id, room_id, purpose, date, start_time, end_time
+      FROM public."Booking"
+      WHERE user_id = $1 
+        AND date >= $2 AND date <= $3
+        AND status = 'approved'
+      ORDER BY date ASC, start_time ASC
+    `;
+    const bookingResult = await pool.query(bookingQuery, [userId, startDateStr, endDateStr]);
+
+    // ดึงตารางเรียนรายวิชา (เอาเฉพาะที่ไม่ได้งดคลาส)
+    const scheduleQuery = `
+      SELECT schedule_id, room_id, subject_name, date, start_time, end_time
+      FROM public."Schedules"
+      WHERE user_id = $1 
+        AND date >= $2 AND date <= $3
+        AND temporarily_closed = false
+      ORDER BY date ASC, start_time ASC
+    `;
+    const scheduleResult = await pool.query(scheduleQuery, [userId, startDateStr, endDateStr]);
+
+    // ==========================================
+    // 🧮 4. เริ่มคำนวณและสรุปผลข้อมูล
+    // ==========================================
+    let totalHoursAll = 0; // ชั่วโมงรวมทั้งหมดของสัปดาห์นี้
+    const roomUsage = {};  // Object เก็บชั่วโมงแยกตามห้อง เช่น { "Com1": 5.5, "Com2": 2 }
+
+    // ฟังก์ชันย่อยสำหรับคำนวณเวลา (เช่น จาก 08:30 ถึง 10:00 = 1.5 ชม.)
+    const calculateHours = (startStr, endStr) => {
+      const [startH, startM] = String(startStr).split(':').map(Number);
+      const [endH, endM] = String(endStr).split(':').map(Number);
+      return (endH + endM / 60) - (startH + startM / 60);
+    };
+
+    // ฟังก์ชันย่อยสำหรับนำข้อมูลไปนับเวลาสะสม
+    const processUsage = (items) => {
+      items.forEach(item => {
+        const hours = calculateHours(item.start_time, item.end_time);
+        totalHoursAll += hours;
+
+        if (!roomUsage[item.room_id]) {
+          roomUsage[item.room_id] = 0;
+        }
+        roomUsage[item.room_id] += hours; // บวกเวลาเพิ่มเข้าไปในห้องนั้นๆ
+      });
+    };
+
+    // โยนข้อมูล Booking และ Schedule เข้าไปนับรวมกัน
+    processUsage(bookingResult.rows);
+    processUsage(scheduleResult.rows);
+
+    // แปลง Object ห้องให้กลายเป็น Array สวยๆ พร้อมให้ Frontend เอาไปวนลูป (Map)
+    const summaryByRoom = Object.keys(roomUsage).map(roomId => ({
+      room_id: roomId,
+      total_hours: roomUsage[roomId]
+    }));
+
+    // ==========================================
+    // 📤 5. ส่งข้อมูลทั้งหมดกลับให้ Frontend
+    // ==========================================
+    res.status(200).json({
+      message: 'ดึงข้อมูลรายงานประจำสัปดาห์สำเร็จ',
+      period: {
+        start_date: startDateStr,
+        end_date: endDateStr
+      },
+      summary: {
+        total_hours_this_week: totalHoursAll, // รวมทั้งหมดกี่ ชม.
+        usage_by_room: summaryByRoom          // สรุปการใช้แยกตามห้อง
+      },
+      raw_data: {
+        bookings: bookingResult.rows,         // ข้อมูลการจองดิบ (เผื่อเอาไปโชว์เป็นรายรายการ)
+        schedules: scheduleResult.rows        // ข้อมูลตารางเรียนดิบ
+      }
+    });
+
+  } catch (error) {
+    console.error('Show Report Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลรายงานการใช้ห้อง' });
+  }
+};
+
+
+// router.get('schedules/showReportForStaff', authenticateToken, authorizeRole('staff', 'teacher'), showReportForStaff);
+export const showReportForStaff = async (req, res) => {
+  try {
+    // ==========================================
+    // 📅 1. หา "เทอมปัจจุบัน" จาก start_date และ end_date
+    // ==========================================
+    const termQuery = `
+      SELECT 
+        term, 
+        TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date,
+        TO_CHAR(end_date, 'YYYY-MM-DD') AS end_date
+      FROM public."Terms" 
+      ORDER BY start_date ASC
+    `;
+    const termResult = await pool.query(termQuery);
+    
+    if (termResult.rowCount === 0) {
+      return res.status(404).json({ message: 'ไม่พบข้อมูลเทอมในระบบ กรุณาตั้งค่าเทอมก่อน' });
+    }
+
+    const terms = termResult.rows;
+    
+    // แปลงวันปัจจุบันให้อยู่ในฟอร์แมต YYYY-MM-DD เพื่อเทียบกับฐานข้อมูล
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    let currentTerm = null;
+
+    // 💡 ค้นหาเทอมที่วันปัจจุบันตกอยู่ในช่วง start_date และ end_date
+    currentTerm = terms.find(t => todayStr >= t.start_date && todayStr <= t.end_date);
+
+    // ถ้าไม่อยู่ในช่วงเทอมไหนเลย (เช่น ปิดเทอม) ให้ถอยไปหาเทอมล่าสุดที่เพิ่งจบไป
+    if (!currentTerm) {
+      for (let i = terms.length - 1; i >= 0; i--) {
+        if (todayStr > terms[i].end_date) {
+          currentTerm = terms[i];
+          break;
+        }
+      }
+      // ถ้าระบบยังใหม่มาก (วันนี้อยู่ก่อนเทอมแรกสุด) ให้ยึดเทอมแรกสุดเป็นหลัก
+      if (!currentTerm) currentTerm = terms[0];
+    }
+
+    const startDateStr = currentTerm.start_date;
+    const endDateStr = currentTerm.end_date;
+
+    // ==========================================
+    // 🗄️ 2. ดึงข้อมูลการใช้ห้องทั้งหมดในช่วงเทอมนั้น
+    // ==========================================
+    
+    // ดึงข้อมูลการจอง (Booking) ที่ผ่านการอนุมัติแล้ว
+    const bookingQuery = `
+      SELECT b.room_id, b.start_time, b.end_time, u.user_id, u.name, u.surname
+      FROM public."Booking" b
+      JOIN public."Users" u ON b.user_id = u.user_id
+      WHERE b.date >= $1 AND b.date <= $2
+        AND b.status = 'approved'
+    `;
+    const bookingResult = await pool.query(bookingQuery, [startDateStr, endDateStr]);
+
+    // ดึงข้อมูลตารางเรียน (Schedules) ที่ไม่ได้ถูกงด
+    const scheduleQuery = `
+      SELECT s.room_id, s.start_time, s.end_time, s.user_id, s.teacher_name AS name, s.teacher_surname AS surname
+      FROM public."Schedules" s
+      WHERE s.date >= $1 AND s.date <= $2
+        AND s.temporarily_closed = false
+    `;
+    const scheduleResult = await pool.query(scheduleQuery, [startDateStr, endDateStr]);
+
+    // ==========================================
+    // 🧮 3. คำนวณและจัดกลุ่มข้อมูล
+    // ==========================================
+    const roomUsage = {};    
+    const teacherUsage = {}; 
+    let totalTermHours = 0;
+
+    const calculateHours = (startStr, endStr) => {
+      const [startH, startM] = String(startStr).split(':').map(Number);
+      const [endH, endM] = String(endStr).split(':').map(Number);
+      return (endH + endM / 60) - (startH + startM / 60);
+    };
+
+    const processData = (items) => {
+      items.forEach(item => {
+        const hours = calculateHours(item.start_time, item.end_time);
+        totalTermHours += hours;
+
+        // 📊 สะสมยอดรายห้อง
+        if (!roomUsage[item.room_id]) roomUsage[item.room_id] = 0;
+        roomUsage[item.room_id] += hours;
+
+        // 🧑‍🏫 สะสมยอดรายบุคคล (อาจารย์/ผู้จอง)
+        const fullName = `${item.name || ''} ${item.surname || ''}`.trim();
+        const userKey = item.user_id || fullName; 
+
+        if (!teacherUsage[userKey]) {
+          teacherUsage[userKey] = {
+            user_id: item.user_id,
+            name: fullName,
+            total_hours: 0
+          };
+        }
+        teacherUsage[userKey].total_hours += hours;
+      });
+    };
+
+    processData(bookingResult.rows);
+    processData(scheduleResult.rows);
+
+    // ==========================================
+    // 🧹 4. จัดรูปแบบ Object ให้เป็น Array 
+    // ==========================================
+    
+    const summaryByRoom = Object.keys(roomUsage).map(roomId => ({
+      room_id: roomId,
+      total_hours: roomUsage[roomId]
+    })).sort((a, b) => b.total_hours - a.total_hours);
+
+    const summaryByTeacher = Object.values(teacherUsage)
+      .sort((a, b) => b.total_hours - a.total_hours);
+
+    // ==========================================
+    // 📤 5. ส่ง Response กลับ
+    // ==========================================
+    res.status(200).json({
+      message: 'ดึงข้อมูลรายงานสำหรับ Staff สำเร็จ',
+      term_info: {
+        term_name: currentTerm.term,
+        start_date: startDateStr,
+        end_date: endDateStr
+      },
+      summary: {
+        total_hours_all_rooms: totalTermHours,
+        room_ranking: summaryByRoom,
+        teacher_ranking: summaryByTeacher
+      }
+    });
+
+  } catch (error) {
+    console.error('Show Report For Staff Error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลรายงาน' });
+  }
+};
