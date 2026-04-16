@@ -13,12 +13,18 @@ import {
     cancelBooking,
     editBooking,
     getMyActiveBookings,
-    getMyBookingHistory
+    getMyBookingHistory,
+    createBookingScope,
+    getCreateBookingScope
  } 
 from '../controllers/bookings.controller.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+router.put('/scope', authenticateToken, authorizeRole('staff'), createBookingScope);
+
+router.get('/scope', authenticateToken, authorizeRole('staff', 'teacher'), getCreateBookingScope);
 
 // กฎ: ต้อง Login + เป็น teacher 
 /**

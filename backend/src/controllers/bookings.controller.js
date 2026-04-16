@@ -11,10 +11,11 @@ export const getPendingBookings = async (req, res) => {
     // ดึงข้อมูล User คนที่เรียก API นี้มาจาก Token
     const requester = req.user;
 
-    // ตั้งค่า Default SQL
+    // ตั้งค่า Default SQL 
+    // 🚨 เพิ่ม b.additional_notes เข้ามาใน SELECT แล้ว
     let sql = `
       SELECT 
-         b.booking_id, b.date, b.start_time, b.end_time, b.purpose, b.status,
+         b.booking_id, b.date, b.start_time, b.end_time, b.purpose, b.status, b.additional_notes,
          r.room_id,
          u.name, u.surname, u.email
       FROM public."Booking" b
@@ -66,6 +67,7 @@ export const getRejectedBookings = async (req, res) => {
     const requester = req.user;
     const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
 
+    // 🚨 เพิ่ม b.additional_notes เข้ามาใน SELECT
     let sql = `
       SELECT 
          b.booking_id, 
@@ -75,6 +77,7 @@ export const getRejectedBookings = async (req, res) => {
          b.purpose,
          b.status,
          b.cancel_reason,
+         b.additional_notes, 
          r.room_id,
          u.name, 
          u.surname,
@@ -133,6 +136,7 @@ export const getApprovedBookings = async (req, res) => {
     const { user_id } = req.query; // สำหรับ Staff ใช้กรองดูเฉพาะคน
 
     // สร้าง SQL พื้นฐาน
+    // 🚨 เพิ่ม b.additional_notes เข้ามาใน SELECT แล้ว
     let sql = `
       SELECT 
          b.booking_id, 
@@ -141,6 +145,7 @@ export const getApprovedBookings = async (req, res) => {
          b.end_time, 
          b.purpose, 
          b.status,
+         b.additional_notes, 
          r.room_id,
          u.name, 
          u.surname, 
@@ -188,6 +193,7 @@ export const getApprovedBookings = async (req, res) => {
     res.status(500).json({ message: 'ไม่สามารถดึงข้อมูลรายการที่อนุมัติแล้วได้' });
   }
 };
+
 
 // /bookings/:id
 // ใช้เมื่อแสกน QR code ห้องระบบ frontend จะส่ง room_id มาตรวจสอบหลังบ้านว่าห้องนี้เวลานี้ห้องว่างไหม ณ ขณะ ที่เราแสกน
@@ -257,60 +263,66 @@ const timeToMinutes = (timeStr) => {
 };
 
 // /bookings/teacher
-// สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก forme ของเว็บ
+// สร้างการจองห้องสำหรับ teacher โดยรับข้อมูลจาก form, filter ของเว็บ
 export const createBookingForTeacher = async (req, res) => {
-  const { room_id, purpose, date, start_time, end_time } = req.body;
+  const { room_id, purpose, date, start_time, end_time, additional_notes } = req.body;
   const user_id = req.user.user_id;
 
-  // แปลงเวลาเป็นนาที
+  // แปลงเวลาเป็นนาที (ฟังก์ชันเดิมที่คุณมีอยู่)
   const startMins = timeToMinutes(start_time);
   const endMins = timeToMinutes(end_time);
 
-  // Business Logic 1: จำกัดช่วงเวลาให้บริการ (08:00 - 20:00)
-  const OPENING_MINS = timeToMinutes('08:00'); // 480 นาที
-  const CLOSING_MINS = timeToMinutes('20:00'); // 1200 นาที
-
-  // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
-  if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
-    return res.status(400).json({
-      success: false,
-      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)'
-    });
-  }
-
-  // Business Logic 2: จำกัดเวลาจองสูงสุด (Max Duration)
-  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 12 ชม. ในหนึ่งครั้ง
-  const MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
-  const bookingDuration = endMins - startMins;
-
-  if (bookingDuration > MAX_DURATION_MINUTES) {
-    return res.status(400).json({
-      success: false,
-      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)`
-    });
-  }
-
-  // Business Logic: ห้ามจองล่วงหน้านาน
-  const MAX_ADVANCE_DAYS = 10; // สมมติให้จองล่วงหน้าได้ไม่เกิน 10 วัน
-  const bookingDate = new Date(date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // รีเซ็ตเวลาเป็นเที่ยงคืนเพื่อเทียบแค่วันที่
-
-  const diffTime = bookingDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-  if (diffDays > MAX_ADVANCE_DAYS) {
-    return res.status(400).json({ message: `สามารถจองล่วงหน้าได้ไม่เกิน ${MAX_ADVANCE_DAYS} วันเท่านั้น` });
-  }
-
   try {
-    // ตรวจสอบเรื่องเวลา (Standardization)
+    // ==========================================
+    // ⚙️ 1. ดึงการตั้งค่าจากตาราง BookingScope
+    // ==========================================
+    const scopeResult = await pool.query(`SELECT * FROM public."BookingScope" LIMIT 1`);
+    
+    // ตั้งค่า Default เผื่อกรณีที่เพิ่งเปิดระบบและยังไม่ได้ตั้งค่า
+    let scope = {
+      opening_mins: '08:00:00',
+      closing_mins: '20:00:00',
+      max_duration_hours: 12,
+      max_advance_days: 10,
+      min_advance_hours: 0 // Default ไม่บังคับจองล่วงหน้า
+    };
 
+    if (scopeResult.rowCount > 0) {
+      scope = scopeResult.rows[0];
+    }
+
+    // ==========================================
+    // 🛡️ 2. Business Logic (Dynamic จาก Database)
+    // ==========================================
+
+    // แปลงเวลาเปิด-ปิดจาก DB (เช่น '08:00:00' -> '08:00') เพื่อส่งเข้าฟังก์ชัน timeToMinutes
+    const OPENING_MINS = timeToMinutes(String(scope.opening_mins).substring(0, 5)); 
+    const CLOSING_MINS = timeToMinutes(String(scope.closing_mins).substring(0, 5)); 
+
+    // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
+    if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
+      return res.status(400).json({
+        success: false,
+        message: `ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ ${String(scope.opening_mins).substring(0, 5)} น. ถึง ${String(scope.closing_mins).substring(0, 5)} น.)`
+      });
+    }
+
+    // จำกัดเวลาจองสูงสุด (Max Duration)
+    const MAX_DURATION_MINUTES = scope.max_duration_hours * 60;
+    const bookingDuration = endMins - startMins;
+
+    if (bookingDuration > MAX_DURATION_MINUTES) {
+      return res.status(400).json({
+        success: false,
+        message: `ไม่อนุญาตให้จองห้องเกิน ${scope.max_duration_hours} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)`
+      });
+    }
+
+    // วันที่และเวลาปัจจุบันสำหรับใช้คำนวณ
     const now = new Date();
     const bookingDate = new Date(date);
     const bookingStart = new Date(`${date}T${start_time}`);
-
-    // Set เวลาให้เป็น 00:00:00 เพื่อเทียบแค่วันที่
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     bookingDate.setHours(0, 0, 0, 0);
@@ -325,7 +337,30 @@ export const createBookingForTeacher = async (req, res) => {
       return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
 
-    //  ตรวจสอบว่าห้องว่างไหม?
+    // เช็คจองล่วงหน้าสูงสุด (Max Advance Days)
+    const diffTimeDays = bookingDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTimeDays / (1000 * 60 * 60 * 24));
+
+    if (diffDays > scope.max_advance_days) {
+      return res.status(400).json({ 
+        message: `สามารถจองล่วงหน้าได้ไม่เกิน ${scope.max_advance_days} วันเท่านั้น` 
+      });
+    }
+
+    // 🚨 เช็คจองล่วงหน้าขั้นต่ำ (Min Advance Hours) - เพื่อให้ Staff มีเวลาตรวจสอบ
+    const diffTimeHours = (bookingStart.getTime() - now.getTime()) / (1000 * 60 * 60);
+    
+    if (diffTimeHours < scope.min_advance_hours) {
+      return res.status(400).json({
+        success: false,
+        message: `ต้องทำการจองล่วงหน้าอย่างน้อย ${scope.min_advance_hours} ชั่วโมง เพื่อให้เจ้าหน้าที่มีเวลาพิจารณา`
+      });
+    }
+
+    // ==========================================
+    // 📅 3. ตรวจสอบว่าห้องว่างไหม? (ชนกับ Schedule / Booking)
+    // ==========================================
+
     // เช็คว่าชนกับ "ตารางเรียน (Schedule)" ไหม?
     const scheduleConflict = await pool.query(
       `SELECT subject_name, start_time, end_time
@@ -347,7 +382,7 @@ export const createBookingForTeacher = async (req, res) => {
       });
     }
 
-    //  เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
+    // เช็คว่าชนกับ "การจองของคนอื่น (Booking)" ไหม?
     const bookingConflict = await pool.query(
       `SELECT booking_id, status FROM public."Booking"
        WHERE room_id = $1 
@@ -374,17 +409,20 @@ export const createBookingForTeacher = async (req, res) => {
       });
     }
 
+    // ==========================================
+    // 💾 4. บันทึกข้อมูลลง Database
+    // ==========================================
+    
     const bookingId = crypto.randomUUID();
+    const finalNotes = additional_notes ? additional_notes : null;
 
-    // บันทึกข้อมูล
     await pool.query(
       `INSERT INTO public."Booking" 
-       (booking_id, room_id, user_id, purpose, date, start_time, end_time, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')`,
-      [bookingId, room_id, user_id, purpose, date, start_time, end_time]
+       (booking_id, room_id, user_id, purpose, date, start_time, end_time, status, additional_notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)`,
+      [bookingId, room_id, user_id, purpose, date, start_time, end_time, finalNotes]
     );
 
-    // 4. ส่ง response
     res.status(201).json({
       message: 'ส่งคำขอจองสำเร็จ',
       bookingId: bookingId
@@ -397,45 +435,64 @@ export const createBookingForTeacher = async (req, res) => {
 };
 
 // /bookings/staff
-// สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก forme ของเว็บ
+// สร้างการจองห้องสำหรับ staff โดยรับข้อมูลจาก form, filter ของเว็บ
 export const createBookingForStaff = async (req, res) => {
-
-  const { room_id, purpose, date, start_time, end_time } = req.body;
+  const { room_id, purpose, date, start_time, end_time, additional_notes } = req.body;
+  const staff_id = req.user.user_id;
 
   // แปลงเวลาเป็นนาที
   const startMins = timeToMinutes(start_time);
   const endMins = timeToMinutes(end_time);
 
-  // Business Logic 1: จำกัดช่วงเวลาให้บริการ (07:30 - 20:00)
-  const OPENING_MINS = timeToMinutes('08:00'); // 480 นาที
-  const CLOSING_MINS = timeToMinutes('20:00'); // 1200 นาที
-
-  // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
-  if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
-    return res.status(400).json({
-      success: false,
-      message: 'ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ 08:00 น. ถึง 20:00 น. เท่านั้น)'
-    });
-  }
-
-  // Business Logic 2: จำกัดเวลาจองสูงสุด (Max Duration)
-  const MAX_DURATION_HOURS = 12; // ตั้งค่าไม่ให้จองได้เกิน 12 ชม. ในหนึ่งครั้ง
-  const MAX_DURATION_MINUTES = MAX_DURATION_HOURS * 60;
-  const bookingDuration = endMins - startMins;
-
-  if (bookingDuration > MAX_DURATION_MINUTES) {
-    return res.status(400).json({
-      success: false,
-      message: `ไม่อนุญาตให้จองห้องเกิน ${MAX_DURATION_HOURS} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)`
-    });
-  }
-
-  // สำหรับ Staff เราจะใช้ user_id ของเขาบันทึกเป็นทั้งผู้จอง (user_id) และผู้อนุมัติ (approved_by)
-  const staff_id = req.user.user_id;
-
   try {
+    // ==========================================
+    // ⚙️ 1. ดึงการตั้งค่าจากตาราง BookingScope
+    // ==========================================
+    const scopeResult = await pool.query(`SELECT * FROM public."BookingScope" LIMIT 1`);
+    
+    // ตั้งค่า Default เผื่อกรณีที่เพิ่งเปิดระบบและยังไม่ได้ตั้งค่า
+    let scope = {
+      opening_mins: '08:00:00',
+      closing_mins: '20:00:00',
+      max_duration_hours: 12
+    };
 
-    // ตรวจสอบเรื่องเวลา (Standardization)
+    if (scopeResult.rowCount > 0) {
+      scope = scopeResult.rows[0];
+    }
+
+    // ==========================================
+    // 🛡️ 2. Business Logic (Dynamic จาก Database)
+    // ==========================================
+
+    const OPENING_MINS = timeToMinutes(String(scope.opening_mins).substring(0, 5)); 
+    const CLOSING_MINS = timeToMinutes(String(scope.closing_mins).substring(0, 5)); 
+
+    // เช็คว่าเวลาที่กรอกเข้ามา อยู่นอกเหนือเวลาทำการหรือไม่
+    if (startMins < OPENING_MINS || endMins > CLOSING_MINS) {
+      return res.status(400).json({
+        success: false,
+        message: `ไม่อนุญาตให้จองห้องนอกเวลาทำการ (ระบบเปิดให้จองตั้งแต่ ${String(scope.opening_mins).substring(0, 5)} น. ถึง ${String(scope.closing_mins).substring(0, 5)} น.)`
+      });
+    }
+
+    // จำกัดเวลาจองสูงสุด (Max Duration)
+    const MAX_DURATION_MINUTES = scope.max_duration_hours * 60;
+    const bookingDuration = endMins - startMins;
+
+    if (bookingDuration > MAX_DURATION_MINUTES) {
+      return res.status(400).json({
+        success: false,
+        message: `ไม่อนุญาตให้จองห้องเกิน ${scope.max_duration_hours} ชั่วโมงต่อครั้ง (คุณเลือกไป ${bookingDuration / 60} ชั่วโมง)`
+      });
+    }
+
+    // (หมายเหตุ: Staff ไม่โดนบังคับเรื่องจองล่วงหน้าขั้นต่ำ/สูงสุด เพราะเป็นคนดูแลระบบ)
+
+    // ==========================================
+    // 📅 3. ตรวจสอบเรื่องเวลาและสถานะห้อง
+    // ==========================================
+
     const now = new Date();
     const bookingDate = new Date(date);
     const bookingStart = new Date(`${date}T${start_time}`);
@@ -454,6 +511,7 @@ export const createBookingForStaff = async (req, res) => {
     if (bookingStart < now) {
       return res.status(400).json({ message: 'เวลาที่เลือกผ่านไปแล้ว' });
     }
+
     // ให้ยามไปเช็คสถานะห้องก่อนว่าเปิดให้ใช้ไหม?
     const checkRoomQuery = `
       SELECT is_active, repair 
@@ -488,7 +546,7 @@ export const createBookingForStaff = async (req, res) => {
        WHERE room_id = $1
        AND date = $2
        AND (start_time < $4 AND end_time > $3)
-       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, // ✅ เช็ค status งดสอน
+       AND (temporarily_closed IS FALSE OR temporarily_closed IS NULL)`, 
       [room_id, date, start_time, end_time]
     );
 
@@ -523,21 +581,25 @@ export const createBookingForStaff = async (req, res) => {
       }
 
       // ถ้ามีคน Pending อยู่ -> Staff มีสิทธิ์เลือกว่าจะทำยังไง
-      // แต่ในที่นี้เราจะ Block ไว้ก่อนเพื่อกันการจองซ้อน (หรือคุณจะยอมให้ Staff แทรกก็ได้)
+      // แต่ในที่นี้เราจะ Block ไว้ก่อนเพื่อกันการจองซ้อน
       return res.status(400).json({
         message: 'ช่วงเวลานี้มีผู้รอการอนุมัติอยู่ (กรุณาตรวจสอบรายการ Pending ก่อน)',
         status: 'pending'
       });
     }
 
-    const bookingId = crypto.randomUUID();
+    // ==========================================
+    // 💾 4. บันทึกข้อมูล (Status = approved)
+    // ==========================================
 
-    // บันทึกข้อมูล (Status = approved)
+    const bookingId = crypto.randomUUID();
+    const finalNotes = additional_notes ? additional_notes : null;
+
     await pool.query(
       `INSERT INTO public."Booking" 
-       (booking_id, room_id, user_id, purpose, date, start_time, end_time, status, approved_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8)`,
-      [bookingId, room_id, staff_id, purpose, date, start_time, end_time, staff_id]
+       (booking_id, room_id, user_id, purpose, date, start_time, end_time, status, approved_by, additional_notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8, $9)`,
+      [bookingId, room_id, staff_id, purpose, date, start_time, end_time, staff_id, finalNotes]
     );
 
     // ส่ง response
@@ -552,6 +614,7 @@ export const createBookingForStaff = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการจอง' });
   }
 };
+
 
 // ประกาศตัวแปร Map ไว้ด้านบนสุดของไฟล์ (นอกฟังก์ชัน Controller)
 // เพื่อให้มันจำค่าไว้ใน RAM ของ Server ตลอดเวลาที่ Server รันอยู่
@@ -1120,5 +1183,123 @@ export const getMyBookingHistory = async (req, res) => {
   } catch (error) {
     console.error('Get Booking History Error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงประวัติการจอง' });
+  }
+};
+
+// /bookings/scope (PUT)
+// บันทึกหรืออัปเดตการตั้งค่าเงื่อนไขการจอง (Booking Scope) แบบมีแถวเดียวเสมอ
+export const createBookingScope = async (req, res) => {
+  const { 
+    opening_mins, 
+    closing_mins, 
+    max_duration_hours, 
+    max_advance_days, 
+    min_advance_hours 
+  } = req.body;
+
+  // Validation: ตรวจสอบความครบถ้วนของข้อมูล
+  if (
+    !opening_mins || 
+    !closing_mins || 
+    max_duration_hours === undefined || 
+    max_advance_days === undefined ||
+    min_advance_hours === undefined
+  ) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'กรุณากรอกข้อมูลการตั้งค่าให้ครบถ้วน (เวลาเปิด, เวลาปิด, จำนวนชั่วโมงสูงสุด, จำนวนวันล่วงหน้าสูงสุด, และระยะเวลาจองล่วงหน้าขั้นต่ำ)' 
+    });
+  }
+
+  try {
+    const values = [opening_mins, closing_mins, max_duration_hours, max_advance_days, min_advance_hours];
+
+    // 💡 1. ลองสั่ง UPDATE ข้อมูลในตารางโดยตรง (ไม่ต้องใส่ WHERE เพราะเราต้องการอัปเดตแถวเดียวที่มีอยู่)
+    // พร้อมกับอัปเดต date_create ให้เป็นวันปัจจุบันที่แก้ไข
+    const updateQuery = `
+      UPDATE public."BookingScope" 
+      SET 
+        opening_mins = $1,
+        closing_mins = $2,
+        max_duration_hours = $3,
+        max_advance_days = $4,
+        min_advance_hours = $5,
+        date_create = CURRENT_DATE
+      RETURNING *;
+    `;
+    let result = await pool.query(updateQuery, values);
+
+    // 💡 2. ถ้า Update ไม่เจอข้อมูลเลย (rowCount === 0) แปลว่าตารางนี้ยังว่างเปล่า 
+    // ให้ใช้คำสั่ง INSERT แถวแรกเข้าไปแทน
+    if (result.rowCount === 0) {
+      const insertQuery = `
+        INSERT INTO public."BookingScope" 
+          (opening_mins, closing_mins, max_duration_hours, max_advance_days, min_advance_hours, date_create)
+        VALUES 
+          ($1, $2, $3, $4, $5, CURRENT_DATE)
+        RETURNING *;
+      `;
+      result = await pool.query(insertQuery, values);
+    }
+
+    // ส่งผลลัพธ์กลับไปยัง Frontend
+    res.status(200).json({
+      success: true,
+      message: 'บันทึกการตั้งค่าระบบจองสำเร็จ',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Create Booking Scope Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'เกิดข้อผิดพลาดในการบันทึกการตั้งค่า' 
+    });
+  }
+};
+
+
+// /bookings/scope (GET)
+// ดึงข้อมูลการตั้งค่าเงื่อนไขการจองล่าสุด
+export const getCreateBookingScope = async (req, res) => {
+  try {
+    // ดึงข้อมูลการตั้งค่าล่าสุด 1 รายการ โดยเรียงจากวันที่สร้างล่าสุด
+    const query = `
+      SELECT 
+        opening_mins, 
+        closing_mins, 
+        max_duration_hours, 
+        max_advance_days, 
+        min_advance_hours,
+        TO_CHAR(date_create, 'YYYY-MM-DD') AS date_create
+      FROM public."BookingScope"
+      ORDER BY date_create DESC
+      LIMIT 1;
+    `;
+
+    const result = await pool.query(query);
+
+    // กรณีที่ระบบเพิ่งเปิดใช้งาน และ Staff ยังไม่เคยเข้ามาตั้งค่าเลย
+    if (result.rowCount === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'ยังไม่มีข้อมูลการตั้งค่าระบบจอง (ใช้ค่า Default)',
+        data: null // หรือจะส่งค่า Default ที่เป็นตัวเลขกลับไปเผื่อ Frontend นำไปแสดงผลก็ได้ครับ
+      });
+    }
+
+    // กรณีมีข้อมูลการตั้งค่า
+    res.status(200).json({
+      success: true,
+      message: 'ดึงข้อมูลการตั้งค่าระบบจองสำเร็จ',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Get Booking Scope Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลการตั้งค่า' 
+    });
   }
 };

@@ -6,6 +6,6 @@ const router = express.Router();
 
 router.post('/fillInTerm', authenticateToken, authorizeRole('staff'), fillInTerm);
 
-router.get('/showTerm', authenticateToken, authorizeRole('staff'), showTerm);
+router.get('/showTerm', authenticateToken, authorizeRole('staff', 'teacher'), showTerm);
 
 export default router;

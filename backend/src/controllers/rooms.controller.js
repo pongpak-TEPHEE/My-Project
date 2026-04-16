@@ -148,6 +148,41 @@ export const getAllRoom = async (req, res) => {
   }
 };
 
+// /rooms/buildings
+// ดึงรายชื่ออาคารทั้งหมด (ไม่ซ้ำกัน) เพื่อใช้ทำ Filter
+export const getBuilding = async (req, res) => {
+  try {
+    // ใช้ DISTINCT เพื่อดึง location ที่ไม่ซ้ำกัน
+    // และกรองค่าที่เป็น NULL หรือค่าว่างออกไป
+    const query = `
+      SELECT DISTINCT location 
+      FROM public."Rooms" 
+      WHERE location IS NOT NULL AND location != ''
+      ORDER BY location ASC;
+    `;
+    
+    const result = await pool.query(query);
+
+    // แปลงผลลัพธ์จาก Array of Objects ให้กลายเป็น Array ของ String ธรรมดา
+    // จาก [{ location: 'อาคาร 15' }, { location: 'อาคาร 26' }] 
+    // ให้กลายเป็น ['อาคาร 15', 'อาคาร 26'] เพื่อให้ Frontend นำไป map ใช้งานได้ง่ายขึ้น
+    const buildings = result.rows.map(row => row.location);
+
+    res.status(200).json({
+      success: true,
+      message: 'ดึงข้อมูลรายชื่ออาคารสำเร็จ',
+      data: buildings
+    });
+
+  } catch (error) {
+    console.error('Get Buildings Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลรายชื่ออาคาร' 
+    });
+  }
+};
+
 /* เป็น function ที่เราจะดึงห้องที่ไม่เปิดทำการ (repair = false) 
 ### res.json มีการส่ง rowConut เอาไว้อยู่แล้ว ### */
 export const getAllRoomRepair = async (req, res) => {
