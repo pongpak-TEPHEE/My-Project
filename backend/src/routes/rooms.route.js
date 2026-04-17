@@ -18,7 +18,7 @@ from '../controllers/rooms.controller.js';
 
 const router = express.Router();
 
-router.get('/buildings', authenticateToken, authorizeRole('staff', 'teacher'), getBuilding);
+router.get('/buildings', getBuilding);
 
 // API สำหรับขอภาพ QR Code
 // URL: GET http://localhost:3000/rooms/26504/qrcode

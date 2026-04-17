@@ -1,18 +1,71 @@
 import { pool } from '../config/db.js';
-import { sendBookingStatusEmail, sendBookingCancelledEmail, sendTeacherCancelledRoomEmailToStaff } from '../services/mailer.js';
+import { sendBookingStatusEmail, sendBookingCancelledEmail, sendTeacherCancelledRoomEmailToStaff, sendBookingExpiredEmail } from '../services/mailer.js';
 import crypto from 'crypto'; // ใช้ในการเ้ขารหัส booking_id
 import { logger } from '../utils/logger.js';
 
 
+
 // /bookings/pending
-// ดึงรายการที่ "รออนุมัติ"
+// ดึงรายการที่ "รออนุมัติ" (สำหรับ Staff)
 export const getPendingBookings = async (req, res) => {
   try {
-    // ดึงข้อมูล User คนที่เรียก API นี้มาจาก Token
     const requester = req.user;
 
-    // ตั้งค่า Default SQL 
-    // 🚨 เพิ่ม b.additional_notes เข้ามาใน SELECT แล้ว
+    // ========================================================
+    // 🧹 1. ตรวจสอบ ยกเลิกรายการที่เลยเวลา และดึงข้อมูลมาส่งอีเมล
+    // ========================================================
+    
+    // ใช้ WITH (CTE) เพื่อ Update และดึงข้อมูลของคนที่โดนยกเลิกออกมาพร้อมๆ กัน
+    const updateExpiredQuery = `
+      WITH updated AS (
+        UPDATE public."Booking"
+        SET 
+          status = 'cancelled',
+          cancel_reason = 'ระบบยกเลิกอัตโนมัติเนื่องจากไม่ได้รับการอนุมัติทันเวลาที่ขอใช้งาน'
+        WHERE status = 'pending'
+          AND (
+            date < CURRENT_DATE 
+            OR (date = CURRENT_DATE AND start_time < CURRENT_TIME)
+          )
+        RETURNING room_id, user_id, date, start_time, end_time
+      )
+      SELECT 
+        u.email, u.name, u.surname, 
+        up.room_id, up.date, up.start_time, up.end_time
+      FROM updated up
+      JOIN public."Users" u ON up.user_id = u.user_id;
+    `;
+    
+    const expiredResult = await pool.query(updateExpiredQuery);
+
+    // ตรวจสอบว่ามีรายการที่ถูกยกเลิกหรือไม่ (มากกว่า 0)
+    if (expiredResult.rowCount > 0) {
+      console.log(`[Auto-Cancel] พบรายการจองที่หมดเวลา ${expiredResult.rowCount} รายการ กำลังวนลูปส่งอีเมล...`);
+      
+      // วนลูปทีละรายการ (ใช้ for...of เพื่อให้ await ทำงานตามลำดับทีละคิว)
+      for (const row of expiredResult.rows) {
+        const userName = `${row.name || ''} ${row.surname || ''}`.trim();
+        const roomId = row.room_id;
+        
+        // จัด Format วันที่ (YYYY-MM-DD) และเวลา (HH:mm - HH:mm) ให้สวยงามก่อนส่ง
+        const dateObj = new Date(row.date);
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const formattedDate = `${y}-${m}-${d}`;
+        
+        const timeSlot = `${String(row.start_time).substring(0, 5)} - ${String(row.end_time).substring(0, 5)} น.`;
+
+        // เรียกใช้ฟังก์ชันส่งอีเมล
+        await sendBookingExpiredEmail(row.email, userName, roomId, formattedDate, timeSlot);
+      }
+      
+      console.log(`[Auto-Cancel] ส่งอีเมลแจ้งเตือนครบทั้ง ${expiredResult.rowCount} รายการแล้ว`);
+    }
+
+    // ========================================================
+    // 🔍 2. ดึงข้อมูลรายการ Pending ที่ยังไม่หมดเวลามาแสดง
+    // ========================================================
     let sql = `
       SELECT 
          b.booking_id, b.date, b.start_time, b.end_time, b.purpose, b.status, b.additional_notes,
@@ -26,13 +79,8 @@ export const getPendingBookings = async (req, res) => {
 
     const params = [];
 
-    if (requester.role === 'teacher') {
-      // ถ้าเป็น Teacher: บังคับ กรองเฉพาะของตัวเอง
-      sql += ` AND b.user_id = $1`;
-      params.push(requester.user_id);
-
-    } else if (requester.role === 'staff') {
-      // กรณีส่ง
+    // กรองเฉพาะของ Staff (ถ้ามีการส่ง user_id มาเพื่อดูเจาะจงคน)
+    if (requester.role === 'staff' || requester.role === 'admin') {
       if (req.query.user_id) {
         sql += ` AND b.user_id = $1`;
         params.push(req.query.user_id);
@@ -43,10 +91,8 @@ export const getPendingBookings = async (req, res) => {
 
     const result = await pool.query(sql, params);
 
-    // Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
       ...row,
-      //  teacher_name: `${row.name} ${row.surname}`,
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5)
     }));
@@ -58,20 +104,17 @@ export const getPendingBookings = async (req, res) => {
     res.status(500).json({ message: 'ไม่สามารถดึงข้อมูลรายการรออนุมัติได้' });
   }
 };
-
 // /bookings/rejected
-// ดึงรายการที่ "ถูกปฏิเสธ"
+// ดึงรายการที่ "ถูกปฏิเสธ" (สำหรับ Staff)
 export const getRejectedBookings = async (req, res) => {
   try {
-    // รับข้อมูลผู้เรียก (Requester) และ Query Parameter
     const requester = req.user;
-    const { user_id } = req.query; // (Optional) สำหรับ Staff ใช้กรองดูเฉพาะคน
+    const { user_id } = req.query; 
 
-    // 🚨 เพิ่ม b.additional_notes เข้ามาใน SELECT
     let sql = `
       SELECT 
          b.booking_id, 
-         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, -- 1. แปลงเป็น String ป้องกัน Timezone Trap
+         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, 
          b.start_time, 
          b.end_time, 
          b.purpose,
@@ -86,36 +129,26 @@ export const getRejectedBookings = async (req, res) => {
       JOIN public."Rooms" r ON b.room_id = r.room_id
       JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'rejected'
-      AND b.date >= CURRENT_DATE --  2. กรองเอาเฉพาะวันที่ปัจจุบันและอนาคต
+      AND b.date >= CURRENT_DATE 
     `;
 
     const params = [];
 
-    // Logic การกรองสิทธิ์ (Role-based Logic)
-    if (requester.role === 'teacher') {
-      // Teacher: บังคับกรองเฉพาะของตัวเอง (User ID จาก Token)
-      // 🚨 3. เปลี่ยนจาก $1 เป็น $${params.length + 1} เพื่อความปลอดภัยและยืดหยุ่น
-      sql += ` AND b.user_id = $${params.length + 1}`;
-      params.push(requester.user_id);
-
-    } else if (requester.role === 'staff' || requester.role === 'admin') {
-      // Staff: ถ้าส่ง user_id มา ก็กรองตามนั้น ถ้าไม่ส่งก็เอาทั้งหมด
+    // กรองเฉพาะของ Staff (ถ้ามีการส่ง user_id มาเพื่อดูเจาะจงคน)
+    if (requester.role === 'staff') {
       if (user_id) {
         sql += ` AND b.user_id = $${params.length + 1}`;
         params.push(user_id);
       }
     }
 
-    // 👈 4. ปรับการเรียงลำดับเป็น ASC (วันที่ใกล้จะถึงที่สุดขึ้นก่อน)
     sql += ` ORDER BY b.date ASC, b.start_time ASC`;
 
-    // รัน Query
     const result = await pool.query(sql, params);
 
-    // จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
       ...row,
-      start_time: String(row.start_time).substring(0, 5), // ตัดวินาทีออก
+      start_time: String(row.start_time).substring(0, 5), 
       end_time: String(row.end_time).substring(0, 5)
     }));
 
@@ -128,19 +161,16 @@ export const getRejectedBookings = async (req, res) => {
 };
 
 // /bookings/approved
-// ดึงรายการที่ "อนุมัติแล้ว"
+// ดึงรายการที่ "อนุมัติแล้ว" (สำหรับ Staff)
 export const getApprovedBookings = async (req, res) => {
   try {
-    // รับข้อมูลผู้เรียก (Requester) และ Query Parameter
     const requester = req.user;
-    const { user_id } = req.query; // สำหรับ Staff ใช้กรองดูเฉพาะคน
+    const { user_id } = req.query; 
 
-    // สร้าง SQL พื้นฐาน
-    // 🚨 เพิ่ม b.additional_notes เข้ามาใน SELECT แล้ว
     let sql = `
       SELECT 
          b.booking_id, 
-         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, -- 👈 แปลงเป็น String ป้องกันปัญหาวันที่เพี้ยน
+         TO_CHAR(b.date, 'YYYY-MM-DD') AS date, 
          b.start_time, 
          b.end_time, 
          b.purpose, 
@@ -154,35 +184,26 @@ export const getApprovedBookings = async (req, res) => {
       JOIN public."Rooms" r ON b.room_id = r.room_id
       JOIN public."Users" u ON b.user_id = u.user_id
       WHERE b.status = 'approved'
-      AND b.date >= CURRENT_DATE -- 👈 เพิ่มเงื่อนไข: ดึงแค่วันนี้ และวันในอนาคต
+      AND b.date >= CURRENT_DATE 
     `;
 
     const params = [];
 
-    // Logic การกรองสิทธิ์ (Role-based Logic)
-    if (requester.role === 'teacher') {
-      // Teacher: เห็นเฉพาะของตัวเองเท่านั้น
-      sql += ` AND b.user_id = $${params.length + 1}`;
-      params.push(requester.user_id);
-
-    } else if (requester.role === 'staff') {
-      // Staff: ดูทั้งหมดได้ หรือเลือกดูรายคนได้
+    // กรองเฉพาะของ Staff (ถ้ามีการส่ง user_id มาเพื่อดูเจาะจงคน)
+    if (requester.role === 'staff') {
       if (user_id) {
         sql += ` AND b.user_id = $${params.length + 1}`;
         params.push(user_id);
       }
     }
 
-    // 👈 ปรับการเรียงลำดับเป็น ASC เพื่อให้คิวที่ใกล้ถึงที่สุดขึ้นมาก่อน
     sql += ` ORDER BY b.date ASC, b.start_time ASC`;
 
-    // รัน Query
     const result = await pool.query(sql, params);
 
-    // จัด Format ข้อมูล
     const formattedBookings = result.rows.map(row => ({
       ...row,
-      start_time: String(row.start_time).substring(0, 5), // ตัดวินาที (HH:mm)
+      start_time: String(row.start_time).substring(0, 5), 
       end_time: String(row.end_time).substring(0, 5)
     }));
 
@@ -733,7 +754,7 @@ export const updateBookingStatus = async (req, res) => {
 };
 
 // /bookings/allBookingSpecific/:roomId
-// สร้าง function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา เพื่อใช้ในปฐิทิน
+// function เพื่อจะส่งข้อมูลการจองห้องที่ "อณุมัติแล้ว" ในห้องที่ต้องการ เช่นในห้อง 26504 -> ดึงรายการที่ approved ทั้งหมดมา เพื่อใช้ในปฐิทิน
 export const getAllBookingSpecific = async (req, res) => {
   const { roomId } = req.params;
   const { status } = req.query;
@@ -1057,6 +1078,59 @@ export const getMyActiveBookings = async (req, res) => {
   const { user_id } = req.user;
 
   try {
+    // ========================================================
+    // 🧹 1. จัดการรายการ 'pending' ของตัวเองที่เลยเวลา (Update -> Cancelled -> Email)
+    // ========================================================
+    const updateExpiredQuery = `
+      WITH updated AS (
+        UPDATE public."Booking"
+        SET 
+          status = 'cancelled',
+          cancel_reason = 'ระบบยกเลิกอัตโนมัติเนื่องจากไม่ได้รับการอนุมัติทันเวลาที่ขอใช้งาน'
+        WHERE status = 'pending'
+          AND user_id = $1 -- กรองเฉพาะรายการของ User คนนี้
+          AND (
+            date < CURRENT_DATE 
+            OR (date = CURRENT_DATE AND start_time < CURRENT_TIME)
+          )
+        RETURNING room_id, date, start_time, end_time
+      )
+      SELECT 
+        u.email, u.name, u.surname, 
+        up.room_id, up.date, up.start_time, up.end_time
+      FROM updated up
+      JOIN public."Users" u ON u.user_id = $1;
+    `;
+    
+    // รันเพื่ออัปเดตสถานะและดึงข้อมูลกลับมา
+    const expiredResult = await pool.query(updateExpiredQuery, [user_id]);
+
+    // ถ้ามีรายการที่ถูกยกเลิก ให้วนลูปส่งอีเมลแจ้งเจ้าตัว
+    if (expiredResult.rowCount > 0) {
+      console.log(`[My Bookings] พบรายการ Pending ของ User ${user_id} ที่หมดเวลา ${expiredResult.rowCount} รายการ กำลังส่งอีเมล...`);
+      
+      for (const row of expiredResult.rows) {
+        const userName = `${row.name || ''} ${row.surname || ''}`.trim();
+        const roomId = row.room_id;
+        
+        // จัด Format วันที่ (YYYY-MM-DD)
+        const dateObj = new Date(row.date);
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const formattedDate = `${y}-${m}-${d}`;
+        
+        // จัด Format เวลา
+        const timeSlot = `${String(row.start_time).substring(0, 5)} - ${String(row.end_time).substring(0, 5)} น.`;
+
+        // ส่งอีเมล
+        await sendBookingExpiredEmail(row.email, userName, roomId, formattedDate, timeSlot);
+      }
+    }
+
+    // ========================================================
+    // 🔍 2. ดึงข้อมูลที่ยัง Active อยู่ ('approved' หรือ 'pending' ที่ยังไม่หมดเวลา) มาแสดง
+    // ========================================================
     const result = await pool.query(
       `SELECT 
          b.*,
@@ -1072,14 +1146,15 @@ export const getMyActiveBookings = async (req, res) => {
       [user_id]
     );
 
-    // 2. จัด Format ข้อมูลตอนส่ง
+    // จัด Format ข้อมูลตอนส่ง
     const bookings = result.rows.map(row => ({
       ...row,
-      date: row.formatted_date, // 👈 3. เอาข้อความวันที่ที่ถูกต้อง ไปทับตัวแปร date อันเดิมที่เพี้ยน
+      date: row.formatted_date, 
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
       can_edit_delete: true
     }));
+    
     res.json(bookings);
 
   } catch (error) {
@@ -1087,6 +1162,7 @@ export const getMyActiveBookings = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลการจอง' });
   }
 };
+
 
 // /bookings//my-bookings/history (GET method)
 // ประวัติการจอง (History): อดีต หรือ รายการที่จบไปแล้ว (Rejected/Cancelled/Approved) โดยจะรวมกับ table schedules ที่มี status cancel ด้วย 
@@ -1257,7 +1333,6 @@ export const createBookingScope = async (req, res) => {
     });
   }
 };
-
 
 // /bookings/scope (GET)
 // ดึงข้อมูลการตั้งค่าเงื่อนไขการจองล่าสุด
