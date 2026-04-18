@@ -153,11 +153,14 @@ export const getAllRoom = async (req, res) => {
 export const getBuilding = async (req, res) => {
   try {
     // ใช้ DISTINCT เพื่อดึง location ที่ไม่ซ้ำกัน
-    // และกรองค่าที่เป็น NULL หรือค่าว่างออกไป
+    // กรองค่าที่เป็น NULL หรือค่าว่างออกไป 
+    // และเลือกเฉพาะอาคารที่มีห้องที่กำลังเปิดใช้งานอยู่ (is_active = true)
     const query = `
       SELECT DISTINCT location 
       FROM public."Rooms" 
-      WHERE location IS NOT NULL AND location != ''
+      WHERE location IS NOT NULL 
+        AND location != '' 
+        AND is_active = true
       ORDER BY location ASC;
     `;
     

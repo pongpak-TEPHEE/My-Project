@@ -53,7 +53,7 @@ export const sendBookingStatusEmail = async (toEmail, bookingDetails) => {
     html: `
       <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
         <h2 style="color: ${color};">${title}</h2>
-        <p>เรียนอาจารย์ ${teacher_name},</p>
+        <p>เรียนบุคลากร ${teacher_name},</p>
         <p>รายการจองห้องของคุณมีสถานะการดำเนินการดังนี้:</p>
         
         <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
@@ -152,7 +152,7 @@ export const sendBookingCancelledEmail = async (toEmail, userName, roomId, date,
                         <h2 style="color: white; margin: 0;">แจ้งยกเลิกการจองห้อง</h2>
                     </div>
                     <div style="padding: 20px;">
-                        <p>เรียน อาจารย์ <strong>${userName}</strong>,</p>
+                        <p>เรียน บุคลากร <strong>${userName}</strong>,</p>
                         <p>ระบบขอแจ้งให้ทราบว่า รายการจองห้องของคุณถูก <strong>ยกเลิกโดยเจ้าหน้าที่/ผู้ดูแลระบบ</strong></p>
                         
                         <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0;">
@@ -204,7 +204,7 @@ export const sendBookingExpiredEmail = async (toEmail, userName, roomId, date, t
                         <h2 style="color: white; margin: 0;">แจ้งยกเลิกคำขอจองห้องอัตโนมัติ</h2>
                     </div>
                     <div style="padding: 20px;">
-                        <p>เรียน อาจารย์/นิสิต <strong>${userName}</strong>,</p>
+                        <p>เรียน บุคลากร <strong>${userName}</strong>,</p>
                         <p>ระบบขอแจ้งให้ทราบว่า คำขอจองห้องของคุณถูก <strong>ยกเลิกโดยอัตโนมัติ</strong> เนื่องจากเลยเวลาที่ขอใช้งานและยังไม่ได้รับการอนุมัติจากเจ้าหน้าที่</p>
                         
                         <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #6c757d; margin: 20px 0;">
@@ -249,20 +249,20 @@ export const sendTeacherCancelledRoomEmailToStaff = async (staffEmails, teacherN
         const mailOptions = {
             from: `"ระบบจองห้อง" <${process.env.EMAIL_USER}>`,
             to: staffEmails, // 💡 สามารถรับค่าเป็น String (อีเมลเดียว) หรือ Array ของอีเมล Staff หลายคนก็ได้
-            subject: `[แจ้งเตือน] อาจารย์ ${teacherName} งดใช้ห้อง ${roomId} ในวันที่ ${date}`,
+            subject: `[แจ้งเตือน] บุคลากร ${teacherName} งดใช้ห้อง ${roomId} ในวันที่ ${date}`,
             html: `
                 <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
                     <div style="background-color: #f39c12; padding: 15px; text-align: center;">
-                        <h2 style="color: white; margin: 0;">แจ้งเตือน: อาจารย์งดใช้ห้อง</h2>
+                        <h2 style="color: white; margin: 0;">แจ้งเตือน: บุคลากร งดใช้ห้อง</h2>
                     </div>
                     <div style="padding: 20px;">
                         <p>เรียน <strong>เจ้าหน้าที่ / ทีมงานผู้ดูแลระบบ</strong>,</p>
-                        <p>ระบบขอแจ้งให้ทราบว่า อาจารย์ <strong>${teacherName}</strong> ได้ทำการ <strong>งดใช้ห้อง/ยกเลิกการจอง</strong> โดยมีรายละเอียดดังต่อไปนี้:</p>
+                        <p>ระบบขอแจ้งให้ทราบว่า บุคลากร <strong>${teacherName}</strong> ได้ทำการ <strong>งดใช้ห้อง/ยกเลิกการจอง</strong> โดยมีรายละเอียดดังต่อไปนี้:</p>
                         
                         <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #f39c12; margin: 20px 0;">
                             <h3 style="margin-top: 0; color: #d68910;">รายละเอียดการงดใช้ห้อง:</h3>
                             <ul style="list-style-type: none; padding-left: 0;">
-                                <li><strong>อาจารย์ผู้จอง:</strong> ${teacherName}</li>
+                                <li><strong>บุคลากร ผู้จอง:</strong> ${teacherName}</li>
                                 <li><strong>ห้อง:</strong> ${roomId}</li>
                                 <li><strong>วันที่:</strong> ${date}</li>
                                 <li><strong>เวลา:</strong> ${timeSlot}</li>
@@ -283,7 +283,6 @@ export const sendTeacherCancelledRoomEmailToStaff = async (staffEmails, teacherN
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ ส่งอีเมลแจ้ง Staff เรื่องอาจารย์งดใช้ห้องสำเร็จ! [Message ID: ${info.messageId}]`);
         return true;
 
     } catch (error) {
@@ -292,7 +291,7 @@ export const sendTeacherCancelledRoomEmailToStaff = async (staffEmails, teacherN
     }
 };
 
-// ฟังก์ชันส่งเมลแจ้งยกเลิก/ปฏิเสธการจอง เนื่องจากอาจารย์ยกเลิกการงดใช้ห้อง (กลับมาสอนตามปกติ)
+// ฟังก์ชันส่งเมลแจ้งยกเลิก/ปฏิเสธการจอง เนื่องจากบุคลากร ยกเลิกการงดใช้ห้อง (กลับมาสอนตามปกติ)
 export const sendScheduleReclaimCancelledEmail = async (toEmail, userName, roomId, date, timeSlot, purpose, teacherName, subjectName, originalStatus) => {
     try {
         // แยกข้อความและสีตามสถานะเดิม
@@ -328,7 +327,7 @@ export const sendScheduleReclaimCancelledEmail = async (toEmail, userName, roomI
                         <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid ${headerColor}; margin: 20px 0;">
                             <h3 style="margin-top: 0; color: #dc3545;">⚠️ สาเหตุที่ไม่อนุมัติ/ยกเลิก:</h3>
                             <p style="margin-bottom: 0;">
-                                เนื่องจาก <strong>อาจารย์ ${teacherName}</strong> (รายวิชา ${subjectName}) ได้ทำการยกเลิกสถานะ "งดใช้ห้อง" และมีความจำเป็นต้องกลับมาใช้ห้อง ${roomId} เพื่อจัดการเรียนการสอนตามตารางปกติในช่วงเวลาดังกล่าว
+                                เนื่องจาก <strong>บุคลากร ${teacherName}</strong> (รายวิชา ${subjectName}) ได้ทำการยกเลิกสถานะ "งดใช้ห้อง" และมีความจำเป็นต้องกลับมาใช้ห้อง ${roomId} เพื่อจัดการเรียนการสอนตามตารางปกติในช่วงเวลาดังกล่าว
                             </p>
                         </div>
                         
@@ -346,11 +345,9 @@ export const sendScheduleReclaimCancelledEmail = async (toEmail, userName, roomI
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ ส่งอีเมลแจ้ง${subjectAction}(อาจารย์ดึงห้องคืน) ให้ ${toEmail} สำเร็จ!`);
         return true;
 
     } catch (error) {
-        console.error(`❌ เกิดข้อผิดพลาดในการส่งอีเมลแจ้ง${subjectAction}(อาจารย์ดึงห้องคืน) ไปที่ ${toEmail}:`, error);
         return false;
     }
 };
@@ -389,7 +386,7 @@ export const sendScheduleEditConflictEmail = async (toEmail, userName, roomId, d
                         <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid ${headerColor}; margin: 20px 0;">
                             <h3 style="margin-top: 0; color: #d35400;">⚠️ สาเหตุที่ไม่อนุมัติ/ยกเลิก:</h3>
                             <p style="margin-bottom: 0;">
-                                เนื่องจากมีการ <strong>ปรับเปลี่ยนตารางเรียนของรายวิชา ${subjectName}</strong> (สอนโดย อาจารย์ ${teacherName}) 
+                                เนื่องจากมีการ <strong>ปรับเปลี่ยนตารางเรียนของรายวิชา ${subjectName}</strong> (สอนโดย ${teacherName}) 
                                 ซึ่งส่งผลให้ตารางสอนใหม่ <strong>ทับซ้อนกับช่วงเวลาที่คุณได้ทำการขอจองไว้</strong>
                             </p>
                         </div>

@@ -454,7 +454,7 @@ router.post('/staff', authenticateToken, authorizeRole('staff'), createBookingFo
  *                   type: string
  *                   example: "ไม่สามารถดึงข้อมูลรายการรออนุมัติได้"
  */
-router.get('/pending', authenticateToken, authorizeRole('staff'), getPendingBookings);
+router.get('/pending', authenticateToken, authorizeRole('staff', 'teacher'), getPendingBookings);
 
 // ดูรายการอนุมัติ
 /**
@@ -569,7 +569,7 @@ router.get('/pending', authenticateToken, authorizeRole('staff'), getPendingBook
  *                   type: string
  *                   example: "ไม่สามารถดึงข้อมูลรายการที่อนุมัติแล้วได้"
  */
-router.get('/approved', authenticateToken, authorizeRole('staff'), getApprovedBookings);
+router.get('/approved', authenticateToken, authorizeRole('staff', 'teacher'), getApprovedBookings);
 
 // ดูรายการที่ปัดตก
 /**
@@ -684,7 +684,7 @@ router.get('/approved', authenticateToken, authorizeRole('staff'), getApprovedBo
  *                   type: string
  *                   example: "ไม่สามารถดึงข้อมูลรายการที่ถูกปฏิเสธได้"
  */
-router.get('/rejected', authenticateToken, authorizeRole('staff'), getRejectedBookings);
+router.get('/rejected', authenticateToken, authorizeRole('staff', 'teacher'), getRejectedBookings);
 
 // เปลี่ยนสถานะ (เฉพาะ Staff)
 // :id คือตัวแปรที่จะรับ booking_id (เช่น /bookings/b123/status)
