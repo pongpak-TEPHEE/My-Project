@@ -552,11 +552,14 @@ router.get('/', getAllSchedules)
  */
 router.patch('/:id/status', authenticateToken, authorizeRole('teacher', 'staff'), updateScheduleStatus);
 
-router.get('/subjects/:unique_schedules', authenticateToken, authorizeRole('staff'), showSubjectSchedule);
+// ดึงข้อมูลรายวิชาทั้งหมดในห้องนั้นๆ
+router.get('/subjects/:room_id', authenticateToken, authorizeRole('staff'), showSubjectSchedule);
 
-router.patch('/editSubjects/:unique_schedules', authenticateToken, authorizeRole('staff'), editSubjectDataSchedule);
+// แก้ไขข้อมูลรายวิชาในห้องนั้นๆ
+router.patch('/editSubjects/:room_id', authenticateToken, authorizeRole('staff'), editSubjectDataSchedule);
 
-router.delete('/deleteSubjects/:unique_schedules', authenticateToken, authorizeRole('staff'), deleteSubjectSchedule);
+// ลบข้อมูลรายวิชาออกจากห้องนั้นๆ
+router.delete('/deleteSubjects/:room_id', authenticateToken, authorizeRole('staff'), deleteSubjectSchedule);
 
 // ==========================================
 // 🔄 Routes สำหรับอัปเดต/เขียนทับไฟล์ Excel
