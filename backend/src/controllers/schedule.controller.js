@@ -53,10 +53,7 @@ const emailCooldowns = new Map();
 // มีการป้องกันการชนกันของข้อมูลการจองภายใน file โดยจะมีข้อความแจ้งว่าชนกับห้องไหนบ้าง
 export const importClassSchedules = async (req, res) => {
 
-  // 🚨 เติม 3 บรรทัดนี้เข้าไป เพื่อดูว่ามีอะไรส่งมาถึง Backend บ้าง
-  console.log("--- DEBUG UPLOAD ---");
-  console.log("req.body: ", req.body);
-  console.log("req.file: ", req.file);
+
   
   try {
     if (!req.file) {
@@ -64,19 +61,48 @@ export const importClassSchedules = async (req, res) => {
     }
 
     // ========================================================
-    // 📅 STEP 0: ดึงข้อมูลวันเริ่มเทอมต้น (first) เพื่อนำมาเป็นฐานการคำนวณ
+    // 📅 STEP 0: ตรวจสอบความครบถ้วนของวันที่เทอม และค้นหาเทอมปัจจุบัน
     // ========================================================
-    const termResult = await pool.query(
-      `SELECT TO_CHAR(start_date, 'YYYY-MM-DD') AS start_date FROM public."Terms" WHERE term = 'first' LIMIT 1`
+    
+    // 1. ดึงข้อมูลเทอมทั้งหมดจาก Database เพื่อตรวจสอบความสมบูรณ์
+    const allTermsResult = await pool.query(
+      `SELECT term, TO_CHAR(start_date, 'YYYY-MM-DD') as start_date, TO_CHAR(end_date, 'YYYY-MM-DD') as end_date FROM public."Terms"`
     );
+    
+    const terms = allTermsResult.rows;
+    let missingAnyDate = false;
+    
+    // เช็กว่ามีเทอมครบ 3 เทอม (first, end, summer) และมี start_date/end_date ครบ 6 วันที่หรือไม่
+    if (terms.length < 3) {
+       missingAnyDate = true;
+    } else {
+       for (const t of terms) {
+          if (!t.start_date || !t.end_date) {
+             missingAnyDate = true;
+             break;
+          }
+       }
+    }
 
-    if (termResult.rowCount === 0 || !termResult.rows[0].start_date) {
+    if (missingAnyDate) {
       return res.status(400).json({ 
-        message: 'ไม่พบข้อมูลวันเริ่มเทอมต้นในระบบ กรุณาตั้งค่าวันเปิดเทอมก่อนนำเข้าตารางเรียน' 
+        message: 'ข้อมูลวันเปิด-ปิดเทอมในระบบไม่ครบถ้วน กรุณาตั้งค่าวันเริ่มต้นและวันสิ้นสุดของทุกเทอมให้เรียบร้อย' 
       });
     }
 
-    const termStartDateStr = termResult.rows[0].start_date;
+    // 2. ถ้าข้อมูลครบ ให้เช็กว่าวันที่ปัจจุบันอยู่ในช่วงเทอมไหน
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    const activeTerm = terms.find(t => todayStr >= t.start_date && todayStr <= t.end_date);
+
+    if (!activeTerm) {
+      return res.status(400).json({ 
+        message: 'วันที่ปัจจุบัน ไม่อยู่ในช่วงเทอมในระบบ กรุณาตรวจสอบอีกครั้ง' 
+      });
+    }
+
+    const termStartDateStr = activeTerm.start_date;
     const baseTermDate = new Date(termStartDateStr);
 
     // Map วันในสัปดาห์ เพื่อใช้บวกจำนวนวัน (M = +0, Tu = +1, ...)
@@ -122,9 +148,17 @@ export const importClassSchedules = async (req, res) => {
 
     console.log(`📥 ได้รับข้อมูลต้นแบบ ${importedData.length} รายการ (จะถูกขยายเป็นสัปดาห์)`);
 
+    if (importedData.length === 0) {
+      return res.status(400).json({ message: 'ไม่พบข้อมูลตารางเรียนในไฟล์ Excel (ไฟล์ว่าง)' });
+    }
+
     // ========================================================
-    // 🔍 STEP 2: เตรียมข้อมูล Users สำหรับตรวจสอบอาจารย์
+    // 🔍 STEP 2: เตรียมข้อมูล Users และ Rooms สำหรับตรวจสอบ
     // ========================================================
+    // โหลดรายชื่อห้องทั้งหมดเพื่อตรวจสอบว่าห้องมีอยู่จริงหรือไม่
+    const roomsResult = await pool.query(`SELECT room_id FROM public."Rooms"`);
+    const roomSet = new Set(roomsResult.rows.map(r => String(r.room_id).trim()));
+
     const getFullNameKey = (name, surname) => {
       const n = name ? String(name).trim() : "";
       const s = surname ? String(surname).trim() : "";
@@ -208,6 +242,28 @@ export const importClassSchedules = async (req, res) => {
             });
             continue;
         }
+
+        // Validation 1.1: ตรวจสอบห้องว่ามีอยู่จริงหรือไม่
+        if (!roomSet.has(roomId)) {
+             errors.push({ 
+                row: index + 2,
+                room: roomId, 
+                type: 'ROOM_NOT_FOUND',
+                message: `ไม่พบหมายเลขห้อง '${roomId}' ในระบบ (กรุณาตรวจสอบการสะกดคำหรือเพิ่มห้องก่อน)` 
+            });
+            continue;
+        }
+
+        // Validation 1.2: ตรวจสอบเวลาเริ่มต้นและเวลาสิ้นสุด
+        if (startTime >= endTime) {
+             errors.push({ 
+                row: index + 2,
+                room: roomId, 
+                type: 'INVALID_TIME',
+                message: `เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด [ข้อมูลที่ได้: ${scheduleStr}]` 
+            });
+            continue;
+        }
         
         // Validation 2: ข้อมูลอาจารย์
         if (!teacherId) {
@@ -228,6 +284,20 @@ export const importClassSchedules = async (req, res) => {
                 targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
                 const targetDate = targetDateObj.toISOString().split('T')[0];
                 
+                // CHECK 0: ตรวจสอบการชนกันเองภายในไฟล์ Excel
+                const fileConflict = validData.find(item => 
+                    item.room_id === roomId &&
+                    item.date === targetDate &&
+                    item.start_time < endTime &&
+                    item.end_time > startTime
+                );
+
+                if (fileConflict) {
+                    throw new Error(
+                        `เวลาชนกับวิชาในไฟล์ Excel เดียวกัน: ${fileConflict.subject_name} (${String(fileConflict.start_time).substring(0, 5)}-${String(fileConflict.end_time).substring(0, 5)})`
+                    );
+                }
+
                 // CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
                  const scheduleConflictCheck = await pool.query(
                     `SELECT schedule_id, subject_name, start_time, end_time
