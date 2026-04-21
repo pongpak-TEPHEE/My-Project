@@ -545,6 +545,7 @@ export const getSchedule = async (req, res) => {
       SELECT 
         schedule_id, 
         room_id, 
+        course_code,
         subject_name, 
         teacher_name,
         teacher_surname,
@@ -579,7 +580,7 @@ export const getSchedule = async (req, res) => {
 
     res.json({
       room_id,
-      total: result.rowCount, // 🗑️ เอาการส่งกลับ semester ออก
+      total: result.rowCount,
       schedules: formattedSchedules
     });
 
@@ -596,6 +597,7 @@ export const getAllSchedules = async (req, res) => {
       SELECT 
         schedule_id, 
         room_id,
+        course_code,
         subject_name, 
         teacher_name,
         teacher_surname,
