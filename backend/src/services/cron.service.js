@@ -3,7 +3,7 @@ import { pool } from '../config/db.js';
 
 export const startCleanupJob = () => {
   
-  // ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
+  // 1. ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
     console.log('🧹 Running OTP Cleanup Job...');
     try {
@@ -16,15 +16,15 @@ export const startCleanupJob = () => {
     } catch (error) {
       console.error('❌ OTP Cleanup Error:', error);
     }
+  }, {
+    scheduled: true,
+    timezone: "Asia/Bangkok"
   });
 
-  // อัปเดตสถานะการจองที่ "เรียนเสร็จแล้ว" ให้เป็น 'completed' (รันทุกชั่วโมง)
-  // เหมาะสำหรับเช็คว่าห้องที่ใช้งานอยู่ หมดเวลาหรือยัง ถ้าหมดแล้วให้จบงาน
+  // 2. อัปเดตสถานะการจองที่ "เรียนเสร็จแล้ว" ให้เป็น 'completed' (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
     console.log('🔄 Running Booking Status Update Job...');
     try {
-      // Logic: เปลี่ยน status เป็น 'completed' ถ้าคิวนั้น 'approved' และ "หมดเวลาแล้ว"
-      // เช็ค 2 กรณี: 1. วันที่ผ่านไปแล้ว (เมื่อวาน) หรือ 2. เป็นของวันนี้ แต่เวลา end_time ผ่านไปแล้ว
       const result = await pool.query(
         `UPDATE public."Booking"
         SET status = 'completed'
@@ -41,56 +41,114 @@ export const startCleanupJob = () => {
     } catch (error) {
       console.error('❌ Status Update Error:', error);
     }
+  }, {
+    scheduled: true,
+    timezone: "Asia/Bangkok"
   });
 
-  // ลบ Booking เก่าตามรอบเทอม (รันทุกวัน เวลา 00:00 น.)
+  // 3. ลบ Booking เก่าตามรอบเทอม (รันทุกวัน เวลา 00:00 น.)
   cron.schedule('0 0 * * *', async () => {
-    console.log('🧹 Running Booking Cleanup Job (Term-based)...');
+    console.log('⏳ [Daily Maintenance] เริ่มทำงาน...');
+    
+    const client = await pool.connect();
     try {
-      // 1. หาว่าปัจจุบันอยู่ในเทอมไหน และหาวันที่เริ่มต้นของเทอมนั้น
-      const now = new Date();
-      const month = now.getMonth() + 1; // ใน JS เดือนเริ่มที่ 0 (ดังนั้นต้อง +1 ให้เป็น 1-12)
-      const year = now.getFullYear();
-      let termStartDateStr = '';
+      await client.query('BEGIN');
 
-      if (month >= 5 && month <= 10) {
-        // ภาคเรียนที่ 1: เดือน 5 ถึง 10
-        // (วันเริ่มต้นเทอมคือ 1 พฤษภาคม ของปีปัจจุบัน)
-        termStartDateStr = `${year}-05-01`;
-      } else {
-        // ภาคเรียนที่ 2: เดือน 11 ถึง 4
-        if (month >= 11) {
-          // ถ้าเป็นเดือน 11, 12 (วันเริ่มต้นเทอมคือ 1 พฤศจิกายน ของปีปัจจุบัน)
-          termStartDateStr = `${year}-11-01`;
+      // 🔄 3.1 ปรับคำขอจองที่ pending และเลยกำหนดวัน ให้เป็น cancelled
+      const autoCancelResult = await client.query(`
+        UPDATE public."Booking" 
+        SET status = 'cancelled'
+        WHERE status = 'pending' AND date < CURRENT_DATE
+      `);
+      
+      if (autoCancelResult.rowCount > 0) {
+        console.log(`🚫 [Auto-Cancel] เปลี่ยนสถานะคำขอที่หมดอายุเป็น cancelled จำนวน ${autoCancelResult.rowCount} รายการ`);
+      }
+
+      // 🔄 3.2 จัดการสถานะปีการศึกษา (Active -> Past)
+      const activeExpired = await client.query(`
+        SELECT academic_year 
+        FROM public."Terms" 
+        WHERE status = 'active' AND term = 'summer' AND end_date < CURRENT_DATE
+        LIMIT 1
+      `);
+
+      if (activeExpired.rowCount > 0) {
+        const expiredYear = activeExpired.rows[0].academic_year;
+        
+        await client.query(`DELETE FROM public."Terms" WHERE status = 'past'`);
+        console.log(`🧹 [Term Update] ล้างข้อมูลเทอม past ของปีก่อนหน้าออกจากระบบเรียบร้อย`);
+
+        await client.query(`
+          UPDATE public."Terms" 
+          SET status = 'past' 
+          WHERE status = 'active'
+        `);
+        console.log(`✅ [Term Update] สิ้นสุดปีการศึกษา ${expiredYear} ปรับสถานะเป็น 'past' สำเร็จ`);
+      }
+
+      // 🧹 3.3 กวาดล้างข้อมูลการจองเก่า (หน่วงเวลา 7 วัน)
+      const pastSummer = await client.query(`
+        SELECT end_date 
+        FROM public."Terms" 
+        WHERE status = 'past' AND term = 'summer'
+        LIMIT 1
+      `);
+
+      if (pastSummer.rowCount > 0 && pastSummer.rows[0].end_date) {
+        const summerEndDateStr = pastSummer.rows[0].end_date;
+        const summerEndDate = new Date(summerEndDateStr);
+        
+        const targetCleanupDate = new Date(summerEndDate);
+        targetCleanupDate.setDate(targetCleanupDate.getDate() + 7);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); 
+
+        if (today >= targetCleanupDate) {
+          const pastRange = await client.query(`
+            SELECT MIN(start_date) as start_year, MAX(end_date) as end_year
+            FROM public."Terms"
+            WHERE status = 'past'
+          `);
+
+          if (pastRange.rowCount > 0 && pastRange.rows[0].start_year) {
+            const { start_year, end_year } = pastRange.rows[0];
+            
+            const historyDel = await client.query(`
+              DELETE FROM public."Booking"
+              WHERE date >= $1 AND date <= $2
+              AND status IN ('rejected', 'completed', 'cancelled')
+            `, [start_year, end_year]);
+
+            if (historyDel.rowCount > 0) {
+              console.log(`✅ [Booking Cleanup] ครบ 7 วัน: ลบประวัติการจองเก่าจำนวน ${historyDel.rowCount} รายการ`);
+            } else {
+              console.log(`✨ [Booking Cleanup] ไม่มีประวัติการจองเก่าที่ตรงเงื่อนไขให้ลบ`);
+            }
+          }
         } else {
-          // ถ้าเป็นเดือน 1, 2, 3, 4 (วันเริ่มต้นเทอมคือ 1 พฤศจิกายน ของ "ปีที่แล้ว")
-          termStartDateStr = `${year - 1}-11-01`;
+          const diffTime = Math.abs(targetCleanupDate - today);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          console.log(`⏳ [Booking Cleanup] อยู่ในช่วง Grace Period (รออีก ${diffDays} วัน)`);
         }
       }
 
-      // 2. เริ่มลบข้อมูลใน Database
-      const result = await pool.query(
-        `DELETE FROM public."Booking" 
-        WHERE 
-          -- เงื่อนไขที่ 1: คำขอที่รออนุมัติ (pending) แต่เลยวันที่ขอมาแล้วให้ลบทิ้งเลย
-          (status = 'pending' AND date < CURRENT_DATE)
-          OR 
-          -- เงื่อนไขที่ 2: ลบประวัติการจองของ "เทอมก่อนหน้า" ทั้งหมดทิ้ง (ขยะของเทอมเก่า)
-          (date < $1)`,
-        [termStartDateStr]
-      );
+      await client.query('COMMIT');
+      console.log('✨ [Daily Maintenance] ทำงานเสร็จสมบูรณ์');
 
-      if (result.rowCount > 0) {
-        console.log(`✅ Booking Cleanup: Deleted ${result.rowCount} items (Older than ${termStartDateStr}).`);
-      } else {
-        console.log(`✨ No bookings to cleanup. (Current term started on: ${termStartDateStr})`);
-      }
     } catch (error) {
-      console.error('❌ Booking Cleanup Error:', error);
+      await client.query('ROLLBACK');
+      console.error('❌ [Daily Maintenance] เกิดข้อผิดพลาด:', error);
+    } finally {
+      client.release();
     }
+  }, {
+    scheduled: true,
+    timezone: "Asia/Bangkok"
   });
 
-  // ลบ Token เก่า (รันตอนตี 3 ทุกวัน)
+  // 4. ลบ Token เก่า (รันตอนตี 3 ทุกวัน)
   cron.schedule('0 3 * * *', async () => {
     console.log('🧹 Running Token Blacklist Cleanup...');
     try {
@@ -103,9 +161,8 @@ export const startCleanupJob = () => {
     } catch (error) {
       console.error('❌ Token Cleanup Error:', error);
     }
+  }, {
+    scheduled: true,
+    timezone: "Asia/Bangkok"
   });
 };
-
-// '*/5 * * * *' = ทำทุกๆ 5 นาที
-// '0 * * * *' = ทำทุกต้นชั่วโมง 
-// '0 0 * * *' = ทำทุกเที่ยงคืนตรง
