@@ -90,15 +90,20 @@ export const importClassSchedules = async (req, res) => {
       });
     }
 
-    // 2. ถ้าข้อมูลครบ ให้เช็กว่าวันที่ปัจจุบันอยู่ในช่วงเทอมไหน
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    // 2. รับค่า term จาก frontend
+    const selectedTerm = req.body.term; 
+    let activeTerm;
 
-    const activeTerm = terms.find(t => todayStr >= t.start_date && todayStr <= t.end_date);
+    if (selectedTerm) {
+      activeTerm = terms.find(t => t.term === selectedTerm);
+    }
 
     if (!activeTerm) {
-      return res.status(400).json({ 
-        message: 'วันที่ปัจจุบัน ไม่อยู่ในช่วงเทอมในระบบ กรุณาตรวจสอบอีกครั้ง' 
+      // บังคับให้ Frontend แสดงหน้าจอเลือกเทอมเสมอ ถ้ายังไม่มีการส่ง term มา
+      return res.json({
+        require_term_selection: true,
+        message: 'กรุณาเลือกเทอมที่ต้องการนำเข้าข้อมูลตารางเรียน',
+        available_terms: terms 
       });
     }
 
