@@ -241,47 +241,52 @@ export const refreshToken = async (req, res) => {
 };
 
 // /auth/logout
-// เป็นการลบ token ของผู้ใช้ออก
+// เป็นการลบ token ของผู้ใช้ออก และเคลียร์ Refresh Token ใน Cookie
 export const logout = async (req, res) => {
   console.log("function logout กำลังทำงาน !!!!!");
   try {
-    // ดึง Token จาก Header
+    // ==========================================
+    // 🛡️ 1. จัดการ Access Token (ยัดลง Blacklist และลบ Session)
+    // ==========================================
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
-    if (!token) {
-      return res.status(200).json({ message: 'Logout สำเร็จ (ไม่มี Token)' });
+    if (token) {
+      const decoded = jwt.decode(token);
+
+      if (decoded && decoded.exp) {
+        const expiresAt = new Date(decoded.exp * 1000);
+
+        // บันทึกลง Blacklist
+        await pool.query(
+          `INSERT INTO public."TokenBlacklist" (token, expires_at) 
+           VALUES ($1, $2) 
+           ON CONFLICT (token) DO NOTHING`, 
+          [token, expiresAt]
+        );
+
+        // ล้าง session_id ของผู้ใช้ออก
+        if (decoded.user_id && decoded.session_id) {
+          await pool.query(
+            'UPDATE public."Users" SET session_id = NULL WHERE user_id = $1 AND session_id = $2',
+            [decoded.user_id, decoded.session_id]
+          );
+        }
+      }
     }
 
-    // ถอดรหัส Token เพื่อดูวันหมดอายุ (exp)
-    // เราใช้ jwt.decode (ไม่ต้อง verify เพราะเราแค่อยากรู้วันหมดอายุ)
-    const decoded = jwt.decode(token);
+    // ==========================================
+    // 🍪 2. จัดการ Refresh Token (หัวใจสำคัญในการหยุดวงจรต่ออายุอัตโนมัติ)
+    // ==========================================
+    // สั่งให้ Browser ลบ Cookie ที่ชื่อ 'refreshToken' ทิ้งทันที
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: true, // ต้องตรงกับตอนที่สร้าง (ตอน verifyOTP)
+      sameSite: 'none', // ต้องตรงกับตอนที่สร้าง
+    });
 
-    // ถ้า Token มั่ว หรือไม่มีวันหมดอายุ ก็ไม่ต้องทำอะไร
-    if (!decoded || !decoded.exp) {
-      return res.status(200).json({ message: 'Logout สำเร็จ' });
-    }
-
-    // แปลง exp (seconds) เป็น Date Object ของ Javascript
-    const expiresAt = new Date(decoded.exp * 1000);
-
-    // บันทึกลง Blacklist
-    await pool.query(
-      `INSERT INTO public."TokenBlacklist" (token, expires_at) 
-      VALUES ($1, $2) 
-       ON CONFLICT (token) DO NOTHING`, // ถ้ามีอยู่แล้วก็ช่างมัน
-      [token, expiresAt]
-    );
-
-    // ล้าง session_id ของผู้ใช้ออก (เฉพาะถ้า session_id ตรงกับใน Token) เพื่อเคลียร์ Single Active Session
-    if (decoded.user_id && decoded.session_id) {
-      await pool.query(
-        'UPDATE public."Users" SET session_id = NULL WHERE user_id = $1 AND session_id = $2',
-        [decoded.user_id, decoded.session_id]
-      );
-    }
-
-    res.json({ message: 'Logout สำเร็จ Token ถูกยกเลิกและเคลียร์ Session แล้ว' });
+    // ส่ง Response กลับไป
+    return res.status(200).json({ message: 'Logout สำเร็จ เคลียร์ Session และลบ Cookie เรียบร้อยแล้ว' });
 
   } catch (error) {
     console.error('Logout Error:', error);

@@ -1183,14 +1183,14 @@ export const getMyBookingHistory = async (req, res) => {
           b.status,
           u.name,
           u.surname
-       FROM public."Booking" b
-       JOIN public."Users" u ON b.user_id = u.user_id
-       WHERE b.user_id = $1
-       AND (
-         b.date < CURRENT_DATE
-         OR 
-         b.status IN ('rejected', 'cancelled', 'approved')
-       )`,
+        FROM public."Booking" b
+        JOIN public."Users" u ON b.user_id = u.user_id
+        WHERE b.user_id = $1
+        AND (
+          b.date < CURRENT_DATE
+          OR 
+          b.status IN ('rejected', 'cancelled', 'completed')
+        )`,
       [user_id]
     );
 
@@ -1205,14 +1205,21 @@ export const getMyBookingHistory = async (req, res) => {
           start_time, 
           end_time, 
           temporarily_closed
-      FROM public."Schedules"
-      WHERE user_id = $1 
-      AND temporarily_closed = TRUE`,
+       FROM public."Schedules"
+       WHERE user_id = $1 
+       AND temporarily_closed = TRUE`,
       [user_id]
     );
 
     // ทำงานพร้อมกัน
     const [bookingResult, scheduleResult] = await Promise.all([bookingQuery, scheduleQuery]);
+
+    // ---------------------------------------------------------
+    // 🔍 [Log จุดที่ 1]: เช็คจำนวนข้อมูลดิบที่ได้จาก Database
+    // ---------------------------------------------------------
+    console.log(`\n=== 🔍 [DEBUG] getMyBookingHistory (User: ${user_id}) ===`);
+    console.log(`📦 เจอข้อมูล Booking: ${bookingResult.rows.length} รายการ`);
+    console.log(`📦 เจอข้อมูล Schedule (ยกเลิกคลาส): ${scheduleResult.rows.length} รายการ`);
 
     // Merge & Normalize
     // แปลงข้อมูล Booking
@@ -1223,7 +1230,7 @@ export const getMyBookingHistory = async (req, res) => {
       teacher_name: `${row.name} ${row.surname}`,
       purpose: row.purpose,
       room_id: row.room_id,
-      date: row.formatted_date, // 👈 เรียกใช้ String ที่แปลงแล้ว
+      date: row.formatted_date, 
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
       status: row.status,
@@ -1237,7 +1244,7 @@ export const getMyBookingHistory = async (req, res) => {
       purpose: row.subject_name,
       teacher_name: row.teacher_name,
       room_id: row.room_id,
-      date: row.formatted_date, // 👈 เรียกใช้ String ที่แปลงแล้ว
+      date: row.formatted_date, 
       start_time: String(row.start_time).substring(0, 5),
       end_time: String(row.end_time).substring(0, 5),
       status: 'class_cancelled',
@@ -1246,13 +1253,25 @@ export const getMyBookingHistory = async (req, res) => {
 
     // รวมและเรียงลำดับ (เรียงจากล่าสุดไปเก่าสุด)
     const allHistory = [...bookings, ...schedules].sort((a, b) => {
-      // ตอนนี้ a.date และ b.date เป็น String แบบ 'YYYY-MM-DD' ชัวร์ๆ แล้ว 
-      // การเอามาใส่ new Date() ตรงนี้จะไม่มีปัญหาเรื่อง Timezone ขยับวันครับ
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
       if (dateB - dateA !== 0) return dateB - dateA;
       return a.start_time.localeCompare(b.start_time);
     });
+
+    // ---------------------------------------------------------
+    // 🚀 [Log จุดที่ 2]: เช็คหน้าตาข้อมูลที่จัด Format เสร็จแล้ว 
+    // โชว์ทุกรายการที่ส่งไป Frontend
+    // ---------------------------------------------------------
+    console.log(`\n🚀 ข้อมูลทั้งหมดหลังรวมกัน (รวม ${allHistory.length} รายการ)`);
+    if (allHistory.length > 0) {
+      console.log("รายการข้อมูลที่ส่งไปทั้งหมด:");
+      // เอา .slice(0, 3) ออก เพื่อให้แสดงผลทุกแถว
+      console.log(JSON.stringify(allHistory, null, 2)); 
+    } else {
+      console.log("ไม่มีข้อมูลประวัติส่งไปครับ (Array ว่าง)");
+    }
+    console.log("=========================================================\n");
 
     res.json(allHistory);
 

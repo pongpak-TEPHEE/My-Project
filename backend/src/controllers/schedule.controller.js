@@ -11,13 +11,13 @@ const formatExcelData = (value, type = 'time') => {
   if (value instanceof Date) {
     // แก้ไข: ใช้ getUTC...() แทน get...() 
     // เพื่อดึงค่าเวลาดิบๆ โดยไม่สน Timezone ของประเทศไทยในปี 1899
-    
+
     if (type === 'time') {
       // ใช้ UTC เพื่อให้ได้ 09:00 ตาม Excel เป๊ะๆ
       const hours = String(value.getUTCHours()).padStart(2, '0');
       const minutes = String(value.getUTCMinutes()).padStart(2, '0');
       const seconds = String(value.getUTCSeconds()).padStart(2, '0');
-      return `${hours}:${minutes}:${seconds}`; 
+      return `${hours}:${minutes}:${seconds}`;
     } else {
       // type === 'date'
       // สำหรับวันที่ ก็ควรใช้ UTC เช่นกันเพื่อความชัวร์ ถ้า Excel เก็บเป็น UTC
@@ -35,7 +35,7 @@ const formatExcelData = (value, type = 'time') => {
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
-    
+
     const hh = String(hours).padStart(2, '0');
     const mm = String(minutes).padStart(2, '0');
     const ss = String(seconds).padStart(2, '0');
@@ -52,7 +52,7 @@ const emailCooldowns = new Map();
 // อัพโหลดข้อมูล file 
 // มีการป้องกันการชนกันของข้อมูลการจองภายใน file โดยจะมีข้อความแจ้งว่าชนกับห้องไหนบ้าง
 export const importClassSchedules = async (req, res) => {
-  
+
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'กรุณาอัปโหลดไฟล์ Excel' });
@@ -61,35 +61,35 @@ export const importClassSchedules = async (req, res) => {
     // ========================================================
     // 📅 STEP 0: ตรวจสอบความครบถ้วนของวันที่เทอม และค้นหาเทอมปัจจุบัน
     // ========================================================
-    
+
     // 1. ดึงข้อมูลเทอมทั้งหมดจาก Database เพื่อตรวจสอบความสมบูรณ์
     const allTermsResult = await pool.query(
       `SELECT term, TO_CHAR(start_date, 'YYYY-MM-DD') as start_date, TO_CHAR(end_date, 'YYYY-MM-DD') as end_date FROM public."Terms"`
     );
-    
+
     const terms = allTermsResult.rows;
     let missingAnyDate = false;
-    
+
     // เช็กว่ามีเทอมครบ 3 เทอม (first, end, summer) และมี start_date/end_date ครบ 6 วันที่หรือไม่
     if (terms.length < 3) {
-       missingAnyDate = true;
+      missingAnyDate = true;
     } else {
-       for (const t of terms) {
-          if (!t.start_date || !t.end_date) {
-             missingAnyDate = true;
-             break;
-          }
-       }
+      for (const t of terms) {
+        if (!t.start_date || !t.end_date) {
+          missingAnyDate = true;
+          break;
+        }
+      }
     }
 
     if (missingAnyDate) {
-      return res.status(400).json({ 
-        message: 'ข้อมูลวันเปิด-ปิดเทอมในระบบไม่ครบถ้วน กรุณาตั้งค่าวันเริ่มต้นและวันสิ้นสุดของทุกเทอมให้เรียบร้อย' 
+      return res.status(400).json({
+        message: 'ข้อมูลวันเปิด-ปิดเทอมในระบบไม่ครบถ้วน กรุณาตั้งค่าวันเริ่มต้นและวันสิ้นสุดของทุกเทอมให้เรียบร้อย'
       });
     }
 
     // 2. รับค่า term จาก frontend
-    const selectedTerm = req.body.term; 
+    const selectedTerm = req.body.term;
     let activeTerm;
 
     if (selectedTerm) {
@@ -101,7 +101,7 @@ export const importClassSchedules = async (req, res) => {
       return res.json({
         require_term_selection: true,
         message: 'กรุณาเลือกเทอมที่ต้องการนำเข้าข้อมูลตารางเรียน',
-        available_terms: terms 
+        available_terms: terms
       });
     }
 
@@ -118,11 +118,11 @@ export const importClassSchedules = async (req, res) => {
     // ========================================================
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
-    
+
     const worksheet = workbook.getWorksheet(1);
-    
+
     if (!worksheet) {
-       return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
+      return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
     }
 
     const importedData = [];
@@ -132,7 +132,7 @@ export const importClassSchedules = async (req, res) => {
       if (rowNumber === 1) {
         row.eachCell((cell, colNumber) => {
           // เก็บชื่อคอลัมน์ภาษาไทยเป็น Key
-          headers[colNumber] = cell.value ? String(cell.value).trim() : ''; 
+          headers[colNumber] = cell.value ? String(cell.value).trim() : '';
         });
       } else {
         let rowData = {};
@@ -140,8 +140,8 @@ export const importClassSchedules = async (req, res) => {
           const key = headers[colNumber];
           let cellValue = cell.value;
           if (typeof cellValue === 'object' && cellValue !== null) {
-             if (cellValue.text) cellValue = cellValue.text;
-             else if (cellValue.result) cellValue = cellValue.result;
+            if (cellValue.text) cellValue = cellValue.text;
+            else if (cellValue.result) cellValue = cellValue.result;
           }
           if (key) rowData[key] = cellValue;
         });
@@ -165,162 +165,162 @@ export const importClassSchedules = async (req, res) => {
     const getFullNameKey = (name, surname) => {
       const n = name ? String(name).trim() : "";
       const s = surname ? String(surname).trim() : "";
-      return `${n} ${s}`.trim(); 
+      return `${n} ${s}`.trim();
     };
 
     const usersResult = await pool.query(`SELECT user_id, name, surname FROM public."Users"`);
     const userMap = new Map();
 
     usersResult.rows.forEach(user => {
-        const key = getFullNameKey(user.name, user.surname);
-        if (key) { 
-            userMap.set(key, user.user_id);
-        }
+      const key = getFullNameKey(user.name, user.surname);
+      if (key) {
+        userMap.set(key, user.user_id);
+      }
     });
 
-    const validData = []; 
+    const validData = [];
     const errors = [];
-    let successCount = 0; 
-    const dateCreate = new Date().toISOString(); 
+    let successCount = 0;
+    const dateCreate = new Date().toISOString();
 
     // ========================================================
     // 🔄 STEP 3: วนลูปตรวจสอบข้อมูลและขยายจำนวนสัปดาห์
     // ========================================================
     for (const [index, row] of importedData.entries()) {
-        
-        // Mapping หัวคอลัมน์ภาษาไทย
-        const roomId = row['หมายเลขห้อง'] ? String(row['หมายเลขห้อง']).trim() : null;
-        const courseCode = row['รหัสวิชา'] ? String(row['รหัสวิชา']).trim() : "";
-        const subjectName = row['ชื่อวิชา'] ? String(row['ชื่อวิชา']).trim() : "";
-        const teacherName = row['ชื่อ'] ? String(row['ชื่อ']).trim() : "";
-        const teacherSurname = row['นามสกุล'] ? String(row['นามสกุล']).trim() : "";
-        const repeatStr = row['จำนวนสัปดาห์'];
-        const scheduleStr = row['วันที่'] ? String(row['วันที่']).trim() : "";
-        
-        // ดึงข้อมูลเดิมมาเสริม (ถ้ามีใน Excel)
-        const sec = row['sec'] ? String(row['sec']).trim() : "";
-        const department = row['department'] ? String(row['department']).trim() : "";
-        const studyYear = row['study_year'] ? String(row['study_year']).trim() : "";
-        const programType = row['program_type'] ? String(row['program_type']).trim() : "";
 
-        const teacherId = userMap.get(`${teacherName} ${teacherSurname}`);
-        
-        let repeatCount = repeatStr ? parseInt(repeatStr) : 15; 
-        if (isNaN(repeatCount) || repeatCount < 1) repeatCount = 1;
+      // Mapping หัวคอลัมน์ภาษาไทย
+      const roomId = row['หมายเลขห้อง'] ? String(row['หมายเลขห้อง']).trim() : null;
+      const courseCode = row['รหัสวิชา'] ? String(row['รหัสวิชา']).trim() : "";
+      const subjectName = row['ชื่อวิชา'] ? String(row['ชื่อวิชา']).trim() : "";
+      const teacherName = row['ชื่อ'] ? String(row['ชื่อ']).trim() : "";
+      const teacherSurname = row['นามสกุล'] ? String(row['นามสกุล']).trim() : "";
+      const repeatStr = row['จำนวนสัปดาห์'];
+      const scheduleStr = row['วันที่'] ? String(row['วันที่']).trim() : "";
 
-        // ระบบแยกส่วนรูปแบบวันที่ M-8-10
-        let startTime = "";
-        let endTime = "";
-        let firstDateRaw = "";
+      // ดึงข้อมูลเดิมมาเสริม (ถ้ามีใน Excel)
+      const sec = row['sec'] ? String(row['sec']).trim() : "";
+      const department = row['department'] ? String(row['department']).trim() : "";
+      const studyYear = row['study_year'] ? String(row['study_year']).trim() : "";
+      const programType = row['program_type'] ? String(row['program_type']).trim() : "";
 
-        if (scheduleStr) {
-          const parts = scheduleStr.split('-');
-          if (parts.length === 3) {
-            const dayCode = parts[0].trim().toLowerCase(); // m, tu, w...
-            const startHr = parts[1].trim(); // 8
-            const endHr = parts[2].trim(); // 10
+      const teacherId = userMap.get(`${teacherName} ${teacherSurname}`);
 
-            const offset = dayOffsets[dayCode];
-            
-            if (offset !== undefined) {
-              // คำนวณวันที่เริ่มต้น
-              const firstDateObj = new Date(baseTermDate);
-              firstDateObj.setDate(baseTermDate.getDate() + offset);
-              firstDateRaw = firstDateObj.toISOString().split('T')[0];
+      let repeatCount = repeatStr ? parseInt(repeatStr) : 15;
+      if (isNaN(repeatCount) || repeatCount < 1) repeatCount = 1;
 
-              // แปลงเวลาให้เป็น 00:00:00
-              startTime = `${startHr.padStart(2, '0')}:00:00`;
-              endTime = `${endHr.padStart(2, '0')}:00:00`;
-            }
+      // ระบบแยกส่วนรูปแบบวันที่ M-8-10
+      let startTime = "";
+      let endTime = "";
+      let firstDateRaw = "";
+
+      if (scheduleStr) {
+        const parts = scheduleStr.split('-');
+        if (parts.length === 3) {
+          const dayCode = parts[0].trim().toLowerCase(); // m, tu, w...
+          const startHr = parts[1].trim(); // 8
+          const endHr = parts[2].trim(); // 10
+
+          const offset = dayOffsets[dayCode];
+
+          if (offset !== undefined) {
+            // คำนวณวันที่เริ่มต้น
+            const firstDateObj = new Date(baseTermDate);
+            firstDateObj.setDate(baseTermDate.getDate() + offset);
+            firstDateRaw = firstDateObj.toISOString().split('T')[0];
+
+            // แปลงเวลาให้เป็น 00:00:00
+            startTime = `${startHr.padStart(2, '0')}:00:00`;
+            endTime = `${endHr.padStart(2, '0')}:00:00`;
           }
         }
+      }
 
-        // Validation 1: ข้อมูลพื้นฐาน 
-        if (!roomId || !firstDateRaw || !startTime || !endTime) {
-             errors.push({ 
-                row: index + 2,
-                room: roomId || 'ไม่ระบุ', 
-                type: 'INVALID_DATA',
-                message: `รูปแบบข้อมูลไม่ถูกต้อง ตรวจสอบหมายเลขห้อง หรือ รูปแบบวันที่ (เช่น M-8-10) [ข้อมูลที่ได้: ${scheduleStr}]` 
-            });
-            continue;
-        }
+      // Validation 1: ข้อมูลพื้นฐาน 
+      if (!roomId || !firstDateRaw || !startTime || !endTime) {
+        errors.push({
+          row: index + 2,
+          room: roomId || 'ไม่ระบุ',
+          type: 'INVALID_DATA',
+          message: `รูปแบบข้อมูลไม่ถูกต้อง ตรวจสอบหมายเลขห้อง หรือ รูปแบบวันที่ (เช่น M-8-10) [ข้อมูลที่ได้: ${scheduleStr}]`
+        });
+        continue;
+      }
 
-        // Validation 1.1: ตรวจสอบห้องว่ามีอยู่จริงหรือไม่
-        if (!roomSet.has(roomId)) {
-             errors.push({ 
-                row: index + 2,
-                room: roomId, 
-                type: 'ROOM_NOT_FOUND',
-                message: `ไม่พบหมายเลขห้อง '${roomId}' ในระบบ (กรุณาตรวจสอบการสะกดคำหรือเพิ่มห้องก่อน)` 
-            });
-            continue;
-        }
+      // Validation 1.1: ตรวจสอบห้องว่ามีอยู่จริงหรือไม่
+      if (!roomSet.has(roomId)) {
+        errors.push({
+          row: index + 2,
+          room: roomId,
+          type: 'ROOM_NOT_FOUND',
+          message: `ไม่พบหมายเลขห้อง '${roomId}' ในระบบ (กรุณาตรวจสอบการสะกดคำหรือเพิ่มห้องก่อน)`
+        });
+        continue;
+      }
 
-        // Validation 1.2: ตรวจสอบเวลาเริ่มต้นและเวลาสิ้นสุด
-        if (startTime >= endTime) {
-             errors.push({ 
-                row: index + 2,
-                room: roomId, 
-                type: 'INVALID_TIME',
-                message: `เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด [ข้อมูลที่ได้: ${scheduleStr}]` 
-            });
-            continue;
-        }
-        
-        // Validation 2: ข้อมูลอาจารย์
-        if (!teacherId) {
-            errors.push({ 
-                row: index + 2,
-                room: roomId, 
-                type: 'TEACHER_NOT_FOUND',
-                message: `ไม่พบข้อมูลอาจารย์ชื่อ: '${teacherName} ${teacherSurname}' ในระบบ (กรุณาตรวจสอบการสะกดคำ)` 
-            });
-            continue;
-        }
+      // Validation 1.2: ตรวจสอบเวลาเริ่มต้นและเวลาสิ้นสุด
+      if (startTime >= endTime) {
+        errors.push({
+          row: index + 2,
+          room: roomId,
+          type: 'INVALID_TIME',
+          message: `เวลาเริ่มต้นต้องน้อยกว่าเวลาสิ้นสุด [ข้อมูลที่ได้: ${scheduleStr}]`
+        });
+        continue;
+      }
 
-        const baseDateObj = new Date(firstDateRaw);
+      // Validation 2: ข้อมูลอาจารย์
+      if (!teacherId) {
+        errors.push({
+          row: index + 2,
+          room: roomId,
+          type: 'TEACHER_NOT_FOUND',
+          message: `ไม่พบข้อมูลอาจารย์ชื่อ: '${teacherName} ${teacherSurname}' ในระบบ (กรุณาตรวจสอบการสะกดคำ)`
+        });
+        continue;
+      }
 
-        for (let week = 0; week < repeatCount; week++) {
-            try {
-                const targetDateObj = new Date(baseDateObj);
-                targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
-                const targetDate = targetDateObj.toISOString().split('T')[0];
-                
-                // CHECK 0: ตรวจสอบการชนกันเองภายในไฟล์ Excel
-                const fileConflict = validData.find(item => 
-                    item.room_id === roomId &&
-                    item.date === targetDate &&
-                    item.start_time < endTime &&
-                    item.end_time > startTime
-                );
+      const baseDateObj = new Date(firstDateRaw);
 
-                if (fileConflict) {
-                    throw new Error(
-                        `เวลาชนกับวิชาในไฟล์ Excel เดียวกัน: ${fileConflict.subject_name} (${String(fileConflict.start_time).substring(0, 5)}-${String(fileConflict.end_time).substring(0, 5)})`
-                    );
-                }
+      for (let week = 0; week < repeatCount; week++) {
+        try {
+          const targetDateObj = new Date(baseDateObj);
+          targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
+          const targetDate = targetDateObj.toISOString().split('T')[0];
 
-                // CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
-                 const scheduleConflictCheck = await pool.query(
-                    `SELECT schedule_id, subject_name, start_time, end_time
+          // CHECK 0: ตรวจสอบการชนกันเองภายในไฟล์ Excel
+          const fileConflict = validData.find(item =>
+            item.room_id === roomId &&
+            item.date === targetDate &&
+            item.start_time < endTime &&
+            item.end_time > startTime
+          );
+
+          if (fileConflict) {
+            throw new Error(
+              `เวลาชนกับวิชาในไฟล์ Excel เดียวกัน: ${fileConflict.subject_name} (${String(fileConflict.start_time).substring(0, 5)}-${String(fileConflict.end_time).substring(0, 5)})`
+            );
+          }
+
+          // CHECK 1: ตรวจสอบการชนกับ "ตารางเรียนที่มีอยู่แล้ว"
+          const scheduleConflictCheck = await pool.query(
+            `SELECT schedule_id, subject_name, start_time, end_time
                      FROM public."Schedules"
                      WHERE room_id = $1
                      AND date = $2
                      AND (start_time < $4 AND end_time > $3)`,
-                    [roomId, targetDate, startTime, endTime]
-                );
+            [roomId, targetDate, startTime, endTime]
+          );
 
-                if (scheduleConflictCheck.rows.length > 0) {
-                    const conflict = scheduleConflictCheck.rows[0];
-                    throw new Error(
-                        `เวลาชนกับวิชาที่มีอยู่แล้ว: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
-                    );
-                }
+          if (scheduleConflictCheck.rows.length > 0) {
+            const conflict = scheduleConflictCheck.rows[0];
+            throw new Error(
+              `เวลาชนกับวิชาที่มีอยู่แล้ว: ${conflict.subject_name} (${conflict.start_time}-${conflict.end_time})`
+            );
+          }
 
-                // CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
-                const bookingConflictCheck = await pool.query(
-                    `SELECT 
+          // CHECK 2: ตรวจสอบการชนกับ "ตารางการจอง"
+          const bookingConflictCheck = await pool.query(
+            `SELECT 
                         b.booking_id, 
                         b.purpose, 
                         b.start_time, 
@@ -333,114 +333,114 @@ export const importClassSchedules = async (req, res) => {
                      WHERE b.room_id = $1 
                      AND b.date = $2 
                      AND b.status IN ('pending', 'approved') 
-                     AND (b.start_time < $4 AND b.end_time > $3)`, 
-                    [roomId, targetDate, startTime, endTime]
-                );
+                     AND (b.start_time < $4 AND b.end_time > $3)`,
+            [roomId, targetDate, startTime, endTime]
+          );
 
-                if (bookingConflictCheck.rows.length > 0) {
-                    const todayStr = new Date().toISOString().split('T')[0];
+          if (bookingConflictCheck.rows.length > 0) {
+            const todayStr = new Date().toISOString().split('T')[0];
 
-                    if (targetDate >= todayStr) {
-                        for (const conflict of bookingConflictCheck.rows) {
-                            await pool.query(
-                                `UPDATE public."Booking" 
+            if (targetDate >= todayStr) {
+              for (const conflict of bookingConflictCheck.rows) {
+                await pool.query(
+                  `UPDATE public."Booking" 
                                  SET status = 'cancelled',
                                      cancel_reason = 'ยกเลิกอัตโนมัติเนื่องจากชนกับตารางเรียนวิชา ${subjectName}'
                                  WHERE booking_id = $1`,
-                                [conflict.booking_id]
-                            );
+                  [conflict.booking_id]
+                );
 
-                            const toEmail = conflict.email;
-                            const userName = `${conflict.name || ''} ${conflict.surname || ''}`.trim();
-                            const formattedDate = targetDate.split('-').reverse().join('/'); 
-                            const timeSlotStr = `${conflict.start_time.slice(0, 5)} - ${conflict.end_time.slice(0, 5)}`;
+                const toEmail = conflict.email;
+                const userName = `${conflict.name || ''} ${conflict.surname || ''}`.trim();
+                const formattedDate = targetDate.split('-').reverse().join('/');
+                const timeSlotStr = `${conflict.start_time.slice(0, 5)} - ${conflict.end_time.slice(0, 5)}`;
 
-                            const cooldownKey = `booking_cancel_conflict_${conflict.booking_id}`; 
-                            const COOLDOWN_MINUTES = 5; 
-                            let shouldSendEmail = true;
+                const cooldownKey = `booking_cancel_conflict_${conflict.booking_id}`;
+                const COOLDOWN_MINUTES = 5;
+                let shouldSendEmail = true;
 
-                            if (typeof emailCooldowns !== 'undefined' && emailCooldowns.has(cooldownKey)) {
-                                const lastSentTime = emailCooldowns.get(cooldownKey);
-                                const diffMinutes = (Date.now() - lastSentTime) / (1000 * 60);
+                if (typeof emailCooldowns !== 'undefined' && emailCooldowns.has(cooldownKey)) {
+                  const lastSentTime = emailCooldowns.get(cooldownKey);
+                  const diffMinutes = (Date.now() - lastSentTime) / (1000 * 60);
 
-                                if (diffMinutes < COOLDOWN_MINUTES) {
-                                    shouldSendEmail = false;
-                                    console.log(`⏳ [Rate Limit] ข้ามการส่งเมลยกเลิกอัตโนมัติให้ ${toEmail}`);
-                                }
-                            }
-                            
-                            if (toEmail && shouldSendEmail) {
-                              if (typeof emailCooldowns !== 'undefined') {
-                                emailCooldowns.set(cooldownKey, Date.now());
-                              }
+                  if (diffMinutes < COOLDOWN_MINUTES) {
+                    shouldSendEmail = false;
+                    console.log(`⏳ [Rate Limit] ข้ามการส่งเมลยกเลิกอัตโนมัติให้ ${toEmail}`);
+                  }
+                }
 
-                              sendScheduleBookingCancelledEmail(
-                                  toEmail, 
-                                  userName, 
-                                  roomId, 
-                                  formattedDate, 
-                                  timeSlotStr, 
-                                  subjectName
-                              );
-                              
-                              console.log(`สั่งส่งอีเมลแจ้งยกเลิก Booking ID: ${conflict.booking_id} ไปที่ ${toEmail} เรียบร้อยแล้ว`);
-                            }
-                            console.log(`ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
-                          }
-                        }
-                    }
-                    
-              // เพิ่มข้อมูลลง validData (ไม่มี uniqueSchedules แล้ว)
-              validData.push({
-                  temp_id: `${index + 1}_w${week + 1}`,
-                  week_number: week + 1,
-                  room_id: roomId,
-                  course_code: courseCode, 
-                  subject_name: subjectName,
-                  teacher_name: teacherName,
-                  teacher_surname: teacherSurname,
-                  start_time: startTime,
-                  end_time: endTime,
-                  temporarily_closed: false,
-                  user_id: teacherId,
-                  date: targetDate,
-                  sec: sec,
-                  dateCreate: dateCreate,
-                  department: department,
-                  study_year: studyYear,        
-                  program_type: programType     
-              });
-              successCount++;
-            } catch (err) {
-                const targetDateObj = new Date(baseDateObj);
-                targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
-                const dateStr = targetDateObj.toISOString().split('T')[0];
+                if (toEmail && shouldSendEmail) {
+                  if (typeof emailCooldowns !== 'undefined') {
+                    emailCooldowns.set(cooldownKey, Date.now());
+                  }
 
-                let errorType = 'UNKNOWN';
-                if (err.message.includes('ชนกับ')) errorType = 'COLLISION';
-                else if (err.message.includes('ข้อมูลไม่ครบ')) errorType = 'INVALID_DATA';
+                  sendScheduleBookingCancelledEmail(
+                    toEmail,
+                    userName,
+                    roomId,
+                    formattedDate,
+                    timeSlotStr,
+                    subjectName
+                  );
 
-                errors.push({ 
-                    row: index + 2, 
-                    week: week + 1,
-                    date: dateStr,
-                    room: roomId, 
-                    type: errorType,
-                    message: `(Week ${week + 1}: ${dateStr}) ${err.message}` 
-                });
+                  console.log(`สั่งส่งอีเมลแจ้งยกเลิก Booking ID: ${conflict.booking_id} ไปที่ ${toEmail} เรียบร้อยแล้ว`);
+                }
+                console.log(`ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
+              }
             }
-        } // End Inner Loop
+          }
+
+          // เพิ่มข้อมูลลง validData (ไม่มี uniqueSchedules แล้ว)
+          validData.push({
+            temp_id: `${index + 1}_w${week + 1}`,
+            week_number: week + 1,
+            room_id: roomId,
+            course_code: courseCode,
+            subject_name: subjectName,
+            teacher_name: teacherName,
+            teacher_surname: teacherSurname,
+            start_time: startTime,
+            end_time: endTime,
+            temporarily_closed: false,
+            user_id: teacherId,
+            date: targetDate,
+            sec: sec,
+            dateCreate: dateCreate,
+            department: department,
+            study_year: studyYear,
+            program_type: programType
+          });
+          successCount++;
+        } catch (err) {
+          const targetDateObj = new Date(baseDateObj);
+          targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
+          const dateStr = targetDateObj.toISOString().split('T')[0];
+
+          let errorType = 'UNKNOWN';
+          if (err.message.includes('ชนกับ')) errorType = 'COLLISION';
+          else if (err.message.includes('ข้อมูลไม่ครบ')) errorType = 'INVALID_DATA';
+
+          errors.push({
+            row: index + 2,
+            week: week + 1,
+            date: dateStr,
+            room: roomId,
+            type: errorType,
+            message: `(Week ${week + 1}: ${dateStr}) ${err.message}`
+          });
+        }
+      } // End Inner Loop
     }
 
     // ส่ง Response
     res.json({
-        message: 'ตรวจสอบไฟล์เรียบร้อย',
-        total_rows_excel: importedData.length,
-        total_generated_slots: successCount + errors.length,
-        valid_count: validData.length,
-        error_count: errors.length,
-        previewData: validData, 
-        errors: errors.length > 0 ? errors : undefined
+      message: 'ตรวจสอบไฟล์เรียบร้อย',
+      total_rows_excel: importedData.length,
+      total_generated_slots: successCount + errors.length,
+      valid_count: validData.length,
+      error_count: errors.length,
+      previewData: validData,
+      errors: errors.length > 0 ? errors : undefined
     });
 
   } catch (error) {
@@ -459,7 +459,7 @@ export const confirmSchedules = async (req, res) => {
     return res.status(400).json({ message: 'ไม่มีข้อมูลที่จะบันทึก' });
   }
 
-  const client = await pool.connect(); 
+  const client = await pool.connect();
 
   try {
     await client.query('BEGIN'); // 🚦 เริ่ม Transaction 
@@ -490,15 +490,15 @@ export const confirmSchedules = async (req, res) => {
         schedule.user_id,
         schedule.sec
       ];
-      await client.query(insertScheduleQuery, values); 
+      await client.query(insertScheduleQuery, values);
     }
 
     await client.query('COMMIT'); // ✅ บันทึกจริงลง Database
-    
-    res.json({ 
-      success: true, 
-      message: 'บันทึกข้อมูลทั้งหมดสำเร็จ', 
-      totalSaved: schedules.length 
+
+    res.json({
+      success: true,
+      message: 'บันทึกข้อมูลทั้งหมดสำเร็จ',
+      totalSaved: schedules.length
     });
 
   } catch (error) {
@@ -514,7 +514,7 @@ export const confirmSchedules = async (req, res) => {
 // เมื่อมีการ confirm จะนำข้อมูลส่วนอื่นที่ไม่ซ้ำนำเข้า database
 const insertScheduleToDB = async (client, data) => {
   // ใช้ UUID เพื่อป้องกันรหัสซ้ำ 100% 
-  const scheduleId = crypto.randomUUID(); 
+  const scheduleId = crypto.randomUUID();
 
   // 🚨 ถอด unique_schedules ออกจากคำสั่ง INSERT ลงตาราง Schedules
   // 🚨 มี course_code ตามที่เราปรับแก้กันก่อนหน้านี้ และลดจำนวน $ เหลือ 12 ตัว
@@ -561,21 +561,21 @@ export const getSchedule = async (req, res) => {
       WHERE room_id = $1
       ORDER BY date ASC, start_time ASC
     `;
-    
+
     const params = [room_id];
-    
+
     const result = await pool.query(sql, params);
 
     const formattedSchedules = result.rows.map(row => {
       // ถ้าค่าเป็น null ให้ถือว่าเป็น false (ไม่ได้งด)
-      const isClosed = row.temporarily_closed === true; 
+      const isClosed = row.temporarily_closed === true;
 
       return {
         ...row,
         start_time: String(row.start_time).substring(0, 5),
         end_time: String(row.end_time).substring(0, 5),
         temporarily_closed: isClosed, // ส่งค่า boolean กลับไปให้ Frontend
-        
+
         // (Optional) เพิ่มข้อความสถานะให้ Frontend ใช้ง่ายๆ
         status_text: isClosed ? 'งดคลาส' : 'เรียนปกติ'
       };
@@ -612,13 +612,13 @@ export const getAllSchedules = async (req, res) => {
       FROM public."Schedules"
       ORDER BY date ASC, start_time ASC, room_id ASC
     `;
-    
+
     // ไม่ต้องมี params แล้ว สามารถรัน Query ตรงๆ ได้เลย
     const result = await pool.query(sql);
 
     // จัด Format ข้อมูล (Logic เดียวกับ getSchedule เดิม)
     const formattedSchedules = result.rows.map(row => {
-      const isClosed = row.temporarily_closed === true; 
+      const isClosed = row.temporarily_closed === true;
 
       return {
         ...row,
@@ -690,7 +690,7 @@ export const updateScheduleStatus = async (req, res) => {
       RETURNING schedule_id, subject_name, temporarily_closed, closed_reason
     `;
     const updatedSchedule = await client.query(updateScheduleSql, [
-      temporarily_closed, 
+      temporarily_closed,
       closed_reason || null,
       id
     ]);
@@ -703,22 +703,22 @@ export const updateScheduleStatus = async (req, res) => {
 
     // กรณีที่ 3.1: Staff กด "งดใช้ห้อง" (แจ้งเตือนอาจารย์)
     if (temporarily_closed === true && role.toLowerCase().trim() === 'staff') {
-        // แปลงเวลาให้ดูสวยงาม
-        const timeSlot = `${String(schedule.start_time).substring(0,5)} - ${String(schedule.end_time).substring(0,5)} น.`;
-        
-        // 3. นำ closed_reason ไปแนบในอีเมลให้ด้วย (ถ้ามีการกรอกเข้ามา)
-        const reasonText = closed_reason ? ` (เหตุผล: ${closed_reason})` : '';
-        const cancelReason = `เจ้าหน้าที่ (${name}) ได้ดำเนินการ "งดใช้ห้อง" สำหรับวิชา ${schedule.subject_name} ให้เรียบร้อยแล้ว${reasonText}`;
-        
-        // ส่งอีเมลไปหาอาจารย์เจ้าของวิชา (ทำงานเบื้องหลัง)
-        sendBookingCancelledEmail(
-            schedule.owner_email,
-            schedule.owner_name,
-            schedule.room_id,
-            schedule.formatted_date,
-            timeSlot,
-            cancelReason
-        ).catch(err => console.error("Failed to email teacher:", err));
+      // แปลงเวลาให้ดูสวยงาม
+      const timeSlot = `${String(schedule.start_time).substring(0, 5)} - ${String(schedule.end_time).substring(0, 5)} น.`;
+
+      // 3. นำ closed_reason ไปแนบในอีเมลให้ด้วย (ถ้ามีการกรอกเข้ามา)
+      const reasonText = closed_reason ? ` (เหตุผล: ${closed_reason})` : '';
+      const cancelReason = `เจ้าหน้าที่ (${name}) ได้ดำเนินการ "งดใช้ห้อง" สำหรับวิชา ${schedule.subject_name} ให้เรียบร้อยแล้ว${reasonText}`;
+
+      // ส่งอีเมลไปหาอาจารย์เจ้าของวิชา (ทำงานเบื้องหลัง)
+      sendBookingCancelledEmail(
+        schedule.owner_email,
+        schedule.owner_name,
+        schedule.room_id,
+        schedule.formatted_date,
+        timeSlot,
+        cancelReason
+      ).catch(err => console.error("Failed to email teacher:", err));
     }
 
 
@@ -747,11 +747,11 @@ export const updateScheduleStatus = async (req, res) => {
 
       // ถ้าเจอคนจองทับซ้อน ให้ทำการยกเลิก/ปฏิเสธ พร้อมบันทึกเหตุผลและส่งอีเมลแจ้ง
       if (conflictUsers.rows.length > 0) {
-        
+
         // แยกคิวตามสถานะเดิม
         const pendingIds = conflictUsers.rows.filter(r => r.status === 'pending').map(r => r.booking_id);
         const approvedIds = conflictUsers.rows.filter(r => r.status === 'approved').map(r => r.booking_id);
-        
+
         // ข้อความเหตุผลที่จะเก็บลง Database
         const cancelReasonText = `อาจารย์เจ้าของวิชา (${schedule.subject_name}) ดึงห้องคืนเพื่อใช้สอนตามปกติ`;
 
@@ -777,8 +777,8 @@ export const updateScheduleStatus = async (req, res) => {
 
         // 📧 วนลูปส่งอีเมลแจ้งเตือนผู้จองแต่ละท่าน
         conflictUsers.rows.forEach(user => {
-          const timeSlot = `${String(user.start_time).substring(0,5)} - ${String(user.end_time).substring(0,5)} น.`;
-          
+          const timeSlot = `${String(user.start_time).substring(0, 5)} - ${String(user.end_time).substring(0, 5)} น.`;
+
           sendScheduleReclaimCancelledEmail(
             user.email,
             user.user_name,
@@ -802,7 +802,7 @@ export const updateScheduleStatus = async (req, res) => {
     res.json({
       message: `อัปเดตสถานะสำเร็จ: ${statusText}`,
       schedule: updatedSchedule.rows[0],
-      canceled_conflicts: canceledBookingsCount 
+      canceled_conflicts: canceledBookingsCount
     });
 
   } catch (error) {
@@ -841,15 +841,15 @@ export const getScheduleLog = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'ดึงข้อมูลหมายเลขห้องจากตารางเรียนสำเร็จ',
-      total: result.rowCount, 
+      total: result.rowCount,
       data: result.rows // ข้อมูลจะออกมาในรูปแบบ [{ room_id: '26504' }, { room_id: '26512' }]
     });
 
   } catch (error) {
     console.error('Get Schedule Log Error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลประวัติตารางเรียน' 
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการดึงข้อมูลประวัติตารางเรียน'
     });
   }
 };
@@ -857,23 +857,23 @@ export const getScheduleLog = async (req, res) => {
 
 export const editScheduleLog = async (req, res) => {
   // รับ ID ห้องเดิมจาก URL (เช่น 26504)
-  const oldRoomId = req.params.id; 
-  
+  const oldRoomId = req.params.id;
+
   // รับ ID ห้องใหม่ที่จะย้ายไป จากแบบฟอร์ม (เช่น 26508)
   const { new_room_id: newRoomId } = req.body;
 
   // Validation
   if (!newRoomId) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: 'กรุณาระบุหมายเลขห้องใหม่ที่ต้องการย้ายไป' 
+      message: 'กรุณาระบุหมายเลขห้องใหม่ที่ต้องการย้ายไป'
     });
   }
 
   if (oldRoomId === newRoomId) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: 'ห้องเดิมและห้องใหม่เป็นห้องเดียวกัน กรุณาเลือกห้องอื่น' 
+      message: 'ห้องเดิมและห้องใหม่เป็นห้องเดียวกัน กรุณาเลือกห้องอื่น'
     });
   }
 
@@ -925,9 +925,9 @@ export const editScheduleLog = async (req, res) => {
 
     if (updateResult.rowCount === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'ไม่พบข้อมูลตารางเรียนในห้องเดิม' 
+        message: 'ไม่พบข้อมูลตารางเรียนในห้องเดิม'
       });
     }
 
@@ -942,9 +942,9 @@ export const editScheduleLog = async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Edit Schedule Log Error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'เกิดข้อผิดพลาดในการย้ายข้อมูลตารางเรียน' 
+      message: 'เกิดข้อผิดพลาดในการย้ายข้อมูลตารางเรียน'
     });
   } finally {
     client.release();
@@ -957,9 +957,9 @@ export const deleteScheduleLog = async (req, res) => {
   const roomId = req.params.id;
 
   if (!roomId) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false,
-      message: 'กรุณาระบุหมายเลขห้องที่ต้องการลบ' 
+      message: 'กรุณาระบุหมายเลขห้องที่ต้องการลบ'
     });
   }
 
@@ -974,9 +974,9 @@ export const deleteScheduleLog = async (req, res) => {
 
     // ถ้าลบไม่ได้เลย (rowCount เป็น 0) แปลว่าไม่มีตารางวิชาในห้องนี้
     if (result.rowCount === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: `ไม่พบข้อมูลตารางเรียนของห้อง ${roomId} ที่ต้องการลบ` 
+        message: `ไม่พบข้อมูลตารางเรียนของห้อง ${roomId} ที่ต้องการลบ`
       });
     }
 
@@ -988,9 +988,9 @@ export const deleteScheduleLog = async (req, res) => {
 
   } catch (error) {
     console.error('Delete Schedule Log Error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'เกิดข้อผิดพลาดในการลบข้อมูลตารางเรียน' 
+      message: 'เกิดข้อผิดพลาดในการลบข้อมูลตารางเรียน'
     });
   }
 };
@@ -1004,7 +1004,7 @@ export const confirmReuploadSchedules = async (req, res) => {
     return res.status(400).json({ message: 'ไม่มีข้อมูลที่จะบันทึก' });
   }
 
-  const client = await pool.connect(); 
+  const client = await pool.connect();
 
   try {
     await client.query('BEGIN'); // 🚦 เริ่ม Transaction ปกป้องข้อมูล
@@ -1041,18 +1041,18 @@ export const confirmReuploadSchedules = async (req, res) => {
         schedule.user_id,
         schedule.sec
       ];
-      
-      await client.query(insertScheduleQuery, values); 
+
+      await client.query(insertScheduleQuery, values);
     }
 
     // 🚨 3. (ลบคำสั่ง Update DetailSchedules ทิ้งไปแล้ว เพราะไม่ได้ใช้งาน)
 
     await client.query('COMMIT'); // ✅ ยืนยันการเปลี่ยนแปลงทั้งหมด
-    
-    res.json({ 
+
+    res.json({
       success: true,
-      message: `อัปเดตไฟล์ตารางเรียนทับข้อมูลเดิมของห้อง ${roomId} สำเร็จ`, 
-      totalSaved: schedules.length 
+      message: `อัปเดตไฟล์ตารางเรียนทับข้อมูลเดิมของห้อง ${roomId} สำเร็จ`,
+      totalSaved: schedules.length
     });
 
   } catch (error) {
@@ -1067,7 +1067,7 @@ export const confirmReuploadSchedules = async (req, res) => {
 
 export const reuploadScheduleFile = async (req, res) => {
   // 1. รับ ID ห้องเดิมเป้าหมาย จาก URL (เช่น 26504)
-  const targetRoomId = req.params.id; 
+  const targetRoomId = req.params.id;
 
   try {
     if (!req.file) {
@@ -1082,8 +1082,8 @@ export const reuploadScheduleFile = async (req, res) => {
     );
 
     if (termResult.rowCount === 0 || !termResult.rows[0].start_date) {
-      return res.status(400).json({ 
-        message: 'ไม่พบข้อมูลวันเริ่มเทอมในระบบ กรุณาตั้งค่าวันเปิดเทอมก่อนนำเข้าตารางเรียน' 
+      return res.status(400).json({
+        message: 'ไม่พบข้อมูลวันเริ่มเทอมในระบบ กรุณาตั้งค่าวันเปิดเทอมก่อนนำเข้าตารางเรียน'
       });
     }
 
@@ -1096,10 +1096,10 @@ export const reuploadScheduleFile = async (req, res) => {
     // ==========================================
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
-    
+
     const worksheet = workbook.getWorksheet(1);
     if (!worksheet) {
-       return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
+      return res.status(400).json({ message: 'ไม่พบข้อมูล Worksheet ในไฟล์' });
     }
 
     const importedData = [];
@@ -1108,7 +1108,7 @@ export const reuploadScheduleFile = async (req, res) => {
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) {
         row.eachCell((cell, colNumber) => {
-          headers[colNumber] = cell.value ? String(cell.value).trim() : ''; 
+          headers[colNumber] = cell.value ? String(cell.value).trim() : '';
         });
       } else {
         let rowData = {};
@@ -1116,8 +1116,8 @@ export const reuploadScheduleFile = async (req, res) => {
           const key = headers[colNumber];
           let cellValue = cell.value;
           if (typeof cellValue === 'object' && cellValue !== null) {
-             if (cellValue.text) cellValue = cellValue.text;
-             else if (cellValue.result) cellValue = cellValue.result;
+            if (cellValue.text) cellValue = cellValue.text;
+            else if (cellValue.result) cellValue = cellValue.result;
           }
           if (key) rowData[key] = cellValue;
         });
@@ -1133,185 +1133,185 @@ export const reuploadScheduleFile = async (req, res) => {
     const getFullNameKey = (name, surname) => {
       const n = name ? String(name).trim() : "";
       const s = surname ? String(surname).trim() : "";
-      return `${n} ${s}`.trim(); 
+      return `${n} ${s}`.trim();
     };
 
     const usersResult = await pool.query(`SELECT user_id, name, surname FROM public."Users"`);
     const userMap = new Map();
     usersResult.rows.forEach(user => {
-        const key = getFullNameKey(user.name, user.surname);
-        if (key) userMap.set(key, user.user_id);
+      const key = getFullNameKey(user.name, user.surname);
+      if (key) userMap.set(key, user.user_id);
     });
 
     // ==========================================
     // ⚙️ เริ่มต้นการตรวจสอบและขยายเป็นสัปดาห์
     // ==========================================
-    const validData = []; 
+    const validData = [];
     const errors = [];
     const warnings = [];
     let successCount = 0;
-    const dateCreate = new Date().toISOString(); 
-    const internalSchedules = []; 
+    const dateCreate = new Date().toISOString();
+    const internalSchedules = [];
 
     for (const [index, row] of importedData.entries()) {
-        
-        // ... (โค้ดดึงตัวแปรจาก Excel และถอดรหัสวันที่ M-8-10 เหมือนเดิม) ...
-        const roomId = row['หมายเลขห้อง'] ? String(row['หมายเลขห้อง']).trim() : null;
-        const courseCode = row['รหัสวิชา'] ? String(row['รหัสวิชา']).trim() : "";
-        const subjectName = row['ชื่อวิชา'] ? String(row['ชื่อวิชา']).trim() : "";
-        const teacherName = row['ชื่อ'] ? String(row['ชื่อ']).trim() : "";
-        const teacherSurname = row['นามสกุล'] ? String(row['นามสกุล']).trim() : "";
-        const repeatStr = row['จำนวนสัปดาห์'];
-        const scheduleStr = row['วันที่'] ? String(row['วันที่']).trim() : "";
-        const sec = row['sec'] ? String(row['sec']).trim() : "";
 
-        const teacherId = userMap.get(`${teacherName} ${teacherSurname}`);
-        
-        let repeatCount = 15; // ตั้งค่าพื้นฐานไว้ที่ 15 เสมอ
-        
-        if (repeatStr) {
-            const parsedRepeat = parseInt(repeatStr);
-            if (!isNaN(parsedRepeat) && parsedRepeat > 0) {
-                repeatCount = parsedRepeat; // ถ้ากรอกมาถูกต้อง เป็นตัวเลข ก็ใช้ค่าตามที่กรอก
-            } else {
-                // ถ้ากรอกมาแต่เป็นตัวอักษรแปลกๆ หรือติดลบ
-                warnings.push({
-                    row: index + 1, // ลำดับวิชาที่
-                    subject_name: subjectName || 'ไม่ระบุชื่อวิชา',
-                    message: `รูปแบบจำนวนสัปดาห์ไม่ถูกต้อง ระบบได้ตั้งค่าเป็น 15 สัปดาห์อัตโนมัติ`
-                });
-            }
+      // ... (โค้ดดึงตัวแปรจาก Excel และถอดรหัสวันที่ M-8-10 เหมือนเดิม) ...
+      const roomId = row['หมายเลขห้อง'] ? String(row['หมายเลขห้อง']).trim() : null;
+      const courseCode = row['รหัสวิชา'] ? String(row['รหัสวิชา']).trim() : "";
+      const subjectName = row['ชื่อวิชา'] ? String(row['ชื่อวิชา']).trim() : "";
+      const teacherName = row['ชื่อ'] ? String(row['ชื่อ']).trim() : "";
+      const teacherSurname = row['นามสกุล'] ? String(row['นามสกุล']).trim() : "";
+      const repeatStr = row['จำนวนสัปดาห์'];
+      const scheduleStr = row['วันที่'] ? String(row['วันที่']).trim() : "";
+      const sec = row['sec'] ? String(row['sec']).trim() : "";
+
+      const teacherId = userMap.get(`${teacherName} ${teacherSurname}`);
+
+      let repeatCount = 15; // ตั้งค่าพื้นฐานไว้ที่ 15 เสมอ
+
+      if (repeatStr) {
+        const parsedRepeat = parseInt(repeatStr);
+        if (!isNaN(parsedRepeat) && parsedRepeat > 0) {
+          repeatCount = parsedRepeat; // ถ้ากรอกมาถูกต้อง เป็นตัวเลข ก็ใช้ค่าตามที่กรอก
         } else {
-            // ถ้า Excel ปล่อยช่องว่างมาเลย
-            warnings.push({
-                row: index + 1, // ลำดับวิชาที่
-                subject_name: subjectName || 'ไม่ระบุชื่อวิชา',
-                message: `ไม่ได้ระบุจำนวนสัปดาห์ ระบบได้เติมค่า 15 สัปดาห์ให้โดยอัตโนมัติ`
-            });
+          // ถ้ากรอกมาแต่เป็นตัวอักษรแปลกๆ หรือติดลบ
+          warnings.push({
+            row: index + 1, // ลำดับวิชาที่
+            subject_name: subjectName || 'ไม่ระบุชื่อวิชา',
+            message: `รูปแบบจำนวนสัปดาห์ไม่ถูกต้อง ระบบได้ตั้งค่าเป็น 15 สัปดาห์อัตโนมัติ`
+          });
         }
-        // ==========================================================
+      } else {
+        // ถ้า Excel ปล่อยช่องว่างมาเลย
+        warnings.push({
+          row: index + 1, // ลำดับวิชาที่
+          subject_name: subjectName || 'ไม่ระบุชื่อวิชา',
+          message: `ไม่ได้ระบุจำนวนสัปดาห์ ระบบได้เติมค่า 15 สัปดาห์ให้โดยอัตโนมัติ`
+        });
+      }
+      // ==========================================================
 
-        let startTime = "";
-        let endTime = "";
-        let firstDateRaw = "";
+      let startTime = "";
+      let endTime = "";
+      let firstDateRaw = "";
 
-        if (scheduleStr) {
-          const parts = scheduleStr.split('-');
-          if (parts.length === 3) {
-            const dayCode = parts[0].trim().toLowerCase(); 
-            const startHr = parts[1].trim(); 
-            const endHr = parts[2].trim(); 
+      if (scheduleStr) {
+        const parts = scheduleStr.split('-');
+        if (parts.length === 3) {
+          const dayCode = parts[0].trim().toLowerCase();
+          const startHr = parts[1].trim();
+          const endHr = parts[2].trim();
 
-            const offset = dayOffsets[dayCode];
-            if (offset !== undefined) {
-              const firstDateObj = new Date(baseTermDate);
-              firstDateObj.setDate(baseTermDate.getDate() + offset);
-              firstDateRaw = firstDateObj.toISOString().split('T')[0];
+          const offset = dayOffsets[dayCode];
+          if (offset !== undefined) {
+            const firstDateObj = new Date(baseTermDate);
+            firstDateObj.setDate(baseTermDate.getDate() + offset);
+            firstDateRaw = firstDateObj.toISOString().split('T')[0];
 
-              startTime = `${startHr.padStart(2, '0')}:00:00`;
-              endTime = `${endHr.padStart(2, '0')}:00:00`;
-            }
+            startTime = `${startHr.padStart(2, '0')}:00:00`;
+            endTime = `${endHr.padStart(2, '0')}:00:00`;
           }
         }
+      }
 
-        // 🚨 1. Validation ข้อมูลพื้นฐาน (ดักจับให้ครบทุกคอลัมน์สำคัญ)
-        if (!roomId || !courseCode || !subjectName || !sec || !firstDateRaw || !startTime || !endTime) {
-            for (let w = 0; w < repeatCount; w++) {
-                errors.push({ 
-                    row: index + 1, // วิชาที่
-                    week: w + 1,
-                    date: 'ไม่สามารถระบุได้',
-                    room: roomId || 'ไม่ระบุ', 
-                    type: 'INVALID_DATA',
-                    message: `ข้อมูลไม่ครบถ้วน กรุณากรอก รหัสวิชา, ชื่อวิชา, sec, หมายเลขห้อง และ วันที่ ให้ครบทุกช่อง` 
-                });
-            }
-            continue;
+      // 🚨 1. Validation ข้อมูลพื้นฐาน (ดักจับให้ครบทุกคอลัมน์สำคัญ)
+      if (!roomId || !courseCode || !subjectName || !sec || !firstDateRaw || !startTime || !endTime) {
+        for (let w = 0; w < repeatCount; w++) {
+          errors.push({
+            row: index + 1, // วิชาที่
+            week: w + 1,
+            date: 'ไม่สามารถระบุได้',
+            room: roomId || 'ไม่ระบุ',
+            type: 'INVALID_DATA',
+            message: `ข้อมูลไม่ครบถ้วน กรุณากรอก รหัสวิชา, ชื่อวิชา, sec, หมายเลขห้อง และ วันที่ ให้ครบทุกช่อง`
+          });
         }
+        continue;
+      }
 
-        const baseDateObj = new Date(firstDateRaw);
+      const baseDateObj = new Date(firstDateRaw);
 
-        for (let week = 0; week < repeatCount; week++) {
-            try {
-                const targetDateObj = new Date(baseDateObj);
-                targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
-                const targetDate = targetDateObj.toISOString().split('T')[0];
-                
-                // 🚨 2. ย้าย Validation ห้องและอาจารย์ มาไว้ในลูป
-                // พอ Error ปุ๊บ มันจะวิ่งไปเข้า Catch ด้านล่าง ทำให้เกิด Error 15 รอบอัตโนมัติ
-                if (roomId !== targetRoomId) {
-                    let err = new Error(`หมายเลขห้องในไฟล์ (${roomId}) ไม่ตรงกับห้องที่กำลังอัปเดต (${targetRoomId})`);
-                    err.type = 'ROOM_MISMATCH';
-                    throw err;
-                }
-                
-                if (!teacherId) {
-                    let err = new Error(`ไม่พบข้อมูลอาจารย์ชื่อ: '${teacherName} ${teacherSurname}'`);
-                    err.type = 'TEACHER_NOT_FOUND';
-                    throw err;
-                }
+      for (let week = 0; week < repeatCount; week++) {
+        try {
+          const targetDateObj = new Date(baseDateObj);
+          targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
+          const targetDate = targetDateObj.toISOString().split('T')[0];
 
-                // 🛑 เช็คการชนกันภายในไฟล์ที่เพิ่งอัปโหลด
-                const isInternalConflict = internalSchedules.some(s => 
-                   s.date === targetDate && 
-                   (s.startTime < endTime && s.endTime > startTime)
-                );
+          // 🚨 2. ย้าย Validation ห้องและอาจารย์ มาไว้ในลูป
+          // พอ Error ปุ๊บ มันจะวิ่งไปเข้า Catch ด้านล่าง ทำให้เกิด Error 15 รอบอัตโนมัติ
+          if (roomId !== targetRoomId) {
+            let err = new Error(`หมายเลขห้องในไฟล์ (${roomId}) ไม่ตรงกับห้องที่กำลังอัปเดต (${targetRoomId})`);
+            err.type = 'ROOM_MISMATCH';
+            throw err;
+          }
 
-                if (isInternalConflict) {
-                    let err = new Error(`เวลาชนกับวิชาอื่นภายในไฟล์ Excel เดียวกัน (${startTime.slice(0,5)}-${endTime.slice(0,5)})`);
-                    err.type = 'COLLISION';
-                    throw err;
-                }
+          if (!teacherId) {
+            let err = new Error(`ไม่พบข้อมูลอาจารย์ชื่อ: '${teacherName} ${teacherSurname}'`);
+            err.type = 'TEACHER_NOT_FOUND';
+            throw err;
+          }
 
-                internalSchedules.push({ date: targetDate, startTime, endTime });
-                
-                validData.push({
-                  temp_id: `${index + 1}_w${week + 1}`,
-                  week_number: week + 1,
-                  room_id: roomId,
-                  course_code: courseCode, 
-                  subject_name: subjectName,
-                  teacher_name: teacherName,
-                  teacher_surname: teacherSurname,
-                  start_time: startTime,
-                  end_time: endTime,
-                  temporarily_closed: false,
-                  user_id: teacherId,
-                  date: targetDate,
-                  sec: sec,
-                  dateCreate: dateCreate
-              });
-              successCount++;
+          // 🛑 เช็คการชนกันภายในไฟล์ที่เพิ่งอัปโหลด
+          const isInternalConflict = internalSchedules.some(s =>
+            s.date === targetDate &&
+            (s.startTime < endTime && s.endTime > startTime)
+          );
 
-            } catch (err) {
-                // เก็บ Error ของแต่ละสัปดาห์ลงไป
-                const targetDateObj = new Date(baseDateObj);
-                targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
-                const dateStr = targetDateObj.toISOString().split('T')[0];
+          if (isInternalConflict) {
+            let err = new Error(`เวลาชนกับวิชาอื่นภายในไฟล์ Excel เดียวกัน (${startTime.slice(0, 5)}-${endTime.slice(0, 5)})`);
+            err.type = 'COLLISION';
+            throw err;
+          }
 
-                errors.push({ 
-                    row: index + 1, 
-                    week: week + 1,
-                    date: dateStr,
-                    room: roomId, 
-                    type: err.type || 'UNKNOWN',
-                    message: `(Week ${week + 1}: ${dateStr}) ${err.message}` 
-                });
-            }
-        } // จบ Loop สัปดาห์
+          internalSchedules.push({ date: targetDate, startTime, endTime });
+
+          validData.push({
+            temp_id: `${index + 1}_w${week + 1}`,
+            week_number: week + 1,
+            room_id: roomId,
+            course_code: courseCode,
+            subject_name: subjectName,
+            teacher_name: teacherName,
+            teacher_surname: teacherSurname,
+            start_time: startTime,
+            end_time: endTime,
+            temporarily_closed: false,
+            user_id: teacherId,
+            date: targetDate,
+            sec: sec,
+            dateCreate: dateCreate
+          });
+          successCount++;
+
+        } catch (err) {
+          // เก็บ Error ของแต่ละสัปดาห์ลงไป
+          const targetDateObj = new Date(baseDateObj);
+          targetDateObj.setDate(baseDateObj.getDate() + (week * 7));
+          const dateStr = targetDateObj.toISOString().split('T')[0];
+
+          errors.push({
+            row: index + 1,
+            week: week + 1,
+            date: dateStr,
+            room: roomId,
+            type: err.type || 'UNKNOWN',
+            message: `(Week ${week + 1}: ${dateStr}) ${err.message}`
+          });
+        }
+      } // จบ Loop สัปดาห์
     } // จบ Loop แถว Excel
 
     // ส่ง Response
     res.status(200).json({
-        message: 'ตรวจสอบไฟล์ใหม่เรียบร้อย',
-        total_rows_excel: importedData.length,
-        total_generated_slots: successCount + errors.length,
-        valid_count: validData.length,
-        error_count: errors.length,
-        warning_count: warnings.length,
-        previewData: validData, 
-        errors: errors.length > 0 ? errors : undefined,
-        warnings: warnings.length > 0 ? warnings : undefined
+      message: 'ตรวจสอบไฟล์ใหม่เรียบร้อย',
+      total_rows_excel: importedData.length,
+      total_generated_slots: successCount + errors.length,
+      valid_count: validData.length,
+      error_count: errors.length,
+      warning_count: warnings.length,
+      previewData: validData,
+      errors: errors.length > 0 ? errors : undefined,
+      warnings: warnings.length > 0 ? warnings : undefined
     });
 
   } catch (error) {
@@ -1325,7 +1325,7 @@ export const reuploadScheduleFile = async (req, res) => {
 // ฟังก์ชันแสดงรายการวิชาที่ไม่ซ้ำกันในห้องนั้นๆ (ดึงเฉพาะวันแรกที่เริ่มเรียน)
 export const showSubjectSchedule = async (req, res) => {
   // รับค่ามาจาก URL parameter (ตั้งชื่อเป็น id หรือ room_id ตามที่คุณพงศ์ภัคกำหนดในไฟล์ Route)
-  const roomId = req.params.id || req.params.room_id; 
+  const roomId = req.params.id || req.params.room_id;
 
   if (!roomId) {
     return res.status(400).json({ message: 'กรุณาระบุหมายเลขห้อง (room_id)' });
@@ -1374,23 +1374,23 @@ export const showSubjectSchedule = async (req, res) => {
 
 export const editSubjectDataSchedule = async (req, res) => {
   // รับ room_id เดิมมาจาก URL เพื่อระบุพิกัดที่จะลบ
-  const old_room_id = req.params.id || req.params.room_id; 
-  
+  const old_room_id = req.params.id || req.params.room_id;
+
   const {
     old_course_code,    // 👈 เพิ่มรหัสวิชาเดิม
-    old_subject_name, 
-    old_sec,          
+    old_subject_name,
+    old_sec,
     room_id,            // ห้องใหม่ (ถ้ามีการย้ายห้อง)
     course_code,        // 👈 รหัสวิชาใหม่
-    subject_name,     
+    subject_name,
     teacher_name,
     teacher_surname,
     start_time,
     end_time,
-    date,             
-    sec,              
-    repeat,           
-    force_cancel 
+    date,
+    sec,
+    repeat,
+    force_cancel
   } = req.body;
 
   // ตรวจสอบข้อมูลอ้างอิงวิชาเดิม
@@ -1405,7 +1405,7 @@ export const editSubjectDataSchedule = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    await client.query('BEGIN'); 
+    await client.query('BEGIN');
 
     // 🧑‍🏫 ค้นหา ID อาจารย์
     const userResult = await client.query(
@@ -1418,18 +1418,18 @@ export const editSubjectDataSchedule = async (req, res) => {
       throw { status: 404, message: 'ไม่พบข้อมูลอาจารย์ท่านนี้ในระบบ (ชื่อหรือนามสกุลไม่ตรง)' };
     }
     const teacherUserId = userResult.rows[0].user_id;
-    
+
     // 🔍 เช็คว่ามีวิชานี้อยู่จริงไหม (อ้างอิงจาก ห้องเดิม, รหัสวิชาเดิม, ชื่อเดิม, เซคเดิม)
     const oldDataResult = await client.query(
-       `SELECT schedule_id
+      `SELECT schedule_id
         FROM public."Schedules"
         WHERE room_id = $1 AND course_code = $2 AND subject_name = $3 AND sec = $4
         LIMIT 1`,
-       [old_room_id, old_course_code, old_subject_name, old_sec]
+      [old_room_id, old_course_code, old_subject_name, old_sec]
     );
 
     if (oldDataResult.rows.length === 0) {
-        throw { status: 404, message: 'ไม่พบรายวิชาเดิมที่ต้องการแก้ไข' };
+      throw { status: 404, message: 'ไม่พบรายวิชาเดิมที่ต้องการแก้ไข' };
     }
 
     // 🗑️ ลบของเก่าทิ้งไปก่อน (ลบทุกสัปดาห์ของวิชานี้)
@@ -1439,7 +1439,7 @@ export const editSubjectDataSchedule = async (req, res) => {
       [old_room_id, old_course_code, old_subject_name, old_sec]
     );
 
-    let canceledBookingsTotal = 0; 
+    let canceledBookingsTotal = 0;
     const baseDate = new Date(date);
 
     // 🔄 วนลูป Insert และ Check ทีละสัปดาห์
@@ -1470,9 +1470,9 @@ export const editSubjectDataSchedule = async (req, res) => {
       ]);
 
       if (scheduleConflict.rows.length > 0) {
-        throw { 
-          status: 400, 
-          message: `เวลาหรือวันที่ดังกล่าว ทับซ้อนกับตารางเรียนอื่น` 
+        throw {
+          status: 400,
+          message: `เวลาหรือวันที่ดังกล่าว ทับซ้อนกับตารางเรียนอื่น`
         };
       }
 
@@ -1496,16 +1496,16 @@ export const editSubjectDataSchedule = async (req, res) => {
 
       if (conflictUsers.rows.length > 0) {
         if (!force_cancel) {
-            throw { 
-                status: 409, 
-                code: 'BOOKING_CONFLICT',
-                message: `วันและเวลาดังกล่าวมีการจองห้องจำนวน ${conflictUsers.rows.length} รายการ\n คุณต้องการยกเลิกคำขอจองเหล่านั้น\nเพื่อใช้จัดตารางเรียนนี้หรือไม่?` 
-            };
+          throw {
+            status: 409,
+            code: 'BOOKING_CONFLICT',
+            message: `วันและเวลาดังกล่าวมีการจองห้องจำนวน ${conflictUsers.rows.length} รายการ\n คุณต้องการยกเลิกคำขอจองเหล่านั้น\nเพื่อใช้จัดตารางเรียนนี้หรือไม่?`
+          };
         }
 
         const pendingIds = conflictUsers.rows.filter(r => r.status === 'pending').map(r => r.booking_id);
         const approvedIds = conflictUsers.rows.filter(r => r.status === 'approved').map(r => r.booking_id);
-        
+
         const cancelReasonText = `ทับซ้อนกับการปรับเปลี่ยนตารางเรียนรายวิชา ${subject_name}`;
 
         if (pendingIds.length > 0) {
@@ -1528,9 +1528,9 @@ export const editSubjectDataSchedule = async (req, res) => {
 
         // ฟังก์ชันส่ง Email ยกเลิกการจอง
         conflictUsers.rows.forEach(user => {
-          const timeSlot = `${String(user.start_time).substring(0,5)} - ${String(user.end_time).substring(0,5)} น.`;
+          const timeSlot = `${String(user.start_time).substring(0, 5)} - ${String(user.end_time).substring(0, 5)} น.`;
           const fullTeacherName = `${teacher_name} ${teacher_surname}`;
-          
+
           sendScheduleEditConflictEmail(
             user.email,
             user.user_name,
@@ -1538,9 +1538,9 @@ export const editSubjectDataSchedule = async (req, res) => {
             formattedDate,
             timeSlot,
             user.purpose,
-            fullTeacherName, 
+            fullTeacherName,
             subject_name,
-            user.status 
+            user.status
           ).catch(err => console.error("Failed to email student regarding schedule edit:", err));
         });
       }
@@ -1556,36 +1556,36 @@ export const editSubjectDataSchedule = async (req, res) => {
       `;
 
       await client.query(insertQuery, [
-        scheduleId,          
+        scheduleId,
         room_id,             // 👈 บันทึกห้องใหม่
         course_code,         // 👈 บันทึกรหัสวิชาใหม่
-        subject_name,        
-        teacherUserId,       
-        teacher_name,        
-        teacher_surname,     
-        formattedDate,       
-        start_time,          
-        end_time,            
-        sec                  
+        subject_name,
+        teacherUserId,
+        teacher_name,
+        teacher_surname,
+        formattedDate,
+        start_time,
+        end_time,
+        sec
       ]);
     }
 
     await client.query('COMMIT');
 
-    res.json({ 
+    res.json({
       message: `แก้ไขและสร้างตารางเรียน ${subject_name} จำนวน ${repeat} สัปดาห์ เรียบร้อยแล้ว`,
-      canceled_conflicts: canceledBookingsTotal 
+      canceled_conflicts: canceledBookingsTotal
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
-    
+
     if (error.status === 409) {
       return res.status(409).json({ code: error.code, message: error.message });
     }
 
     console.error('Edit Subject Schedule Error:', error);
-    
+
     if (error.status) {
       res.status(error.status).json({ message: error.message });
     } else {
@@ -1599,16 +1599,16 @@ export const editSubjectDataSchedule = async (req, res) => {
 
 export const deleteSubjectSchedule = async (req, res) => {
   // รับหมายเลขห้องจาก URL
-  const roomId = req.params.id || req.params.room_id; 
-  
+  const roomId = req.params.id || req.params.room_id;
+
   // รับรหัสวิชา, ชื่อวิชา และ sec ที่ต้องการลบ จากแบบฟอร์ม Frontend
-  const { course_code, subject_name, sec } = req.body; 
+  const { course_code, subject_name, sec } = req.body;
   const { user_id, role } = req.user; // ดึงข้อมูลคนกดลบมาจาก Token
 
   // 1. ตรวจสอบว่าส่งข้อมูลมาครบไหม
   if (!roomId || !course_code || !subject_name || !sec) {
-    return res.status(400).json({ 
-      message: 'กรุณาระบุหมายเลขห้อง, รหัสวิชา, ชื่อวิชา และหมู่เรียน (sec) ให้ครบถ้วน' 
+    return res.status(400).json({
+      message: 'กรุณาระบุหมายเลขห้อง, รหัสวิชา, ชื่อวิชา และหมู่เรียน (sec) ให้ครบถ้วน'
     });
   }
 
@@ -1640,7 +1640,7 @@ export const deleteSubjectSchedule = async (req, res) => {
       [roomId, course_code, subject_name, sec]
     );
 
-    res.json({ 
+    res.json({
       message: `ลบตารางเรียนวิชา ${subject_name} กลุ่มเรียน ${sec} สำเร็จแล้ว (จำนวน ${deleteResult.rowCount} คาบเรียน)`,
       deleted_count: deleteResult.rowCount
     });
@@ -1662,7 +1662,7 @@ const calculateHours = (startTime, endTime) => {
 
 // export excel เพื่อสร้าง Log
 export const exportTermReport = async (req, res) => {
-  const { startDate, endDate } = req.query; 
+  const { startDate, endDate } = req.query;
 
   if (!startDate || !endDate) {
     return res.status(400).json({ message: 'กรุณาระบุวันที่เริ่มต้นและสิ้นสุดของเทอม' });
@@ -1711,6 +1711,11 @@ export const exportTermReport = async (req, res) => {
       [startDate, endDate]
     );
 
+    console.log(`📊 ดึงข้อมูลจาก DB ได้ทั้งหมด: ${scheduleResult.rows.length} แถว`);
+    if (scheduleResult.rows.length > 0) {
+      console.log(`🏢 ตัวอย่างห้องที่เจอ: ${scheduleResult.rows[0].room_id}`);
+    }
+
     // ==========================================
     // 🧠 3. คำนวณข้อมูลสำหรับ Dashboard
     // ==========================================
@@ -1728,7 +1733,7 @@ export const exportTermReport = async (req, res) => {
       // สมมติว่ามีฟังก์ชัน calculateHours อยู่ในไฟล์นี้แล้ว
       const hrs = calculateHours(b.start_time, b.end_time);
       const stat = b.status ? b.status.toLowerCase() : 'unknown';
-      
+
       if (statusStats[stat] !== undefined) statusStats[stat]++;
       else statusStats[stat] = 1;
 
@@ -1771,9 +1776,9 @@ export const exportTermReport = async (req, res) => {
     summarySheet.addRow([]);
 
     const header1 = summarySheet.addRow(['🏠 สถิติการใช้งานรายห้อง (รวมคาบเรียนและจองพิเศษ)']);
-    header1.font = { bold: true, color: { argb: 'FF0000FF' } }; 
+    header1.font = { bold: true, color: { argb: 'FF0000FF' } };
     summarySheet.addRow(['ชื่อห้อง', 'ชั่วโมงรวมตลอดเทอม', 'เฉลี่ยต่อสัปดาห์']).font = { bold: true };
-    
+
     Object.entries(roomStats)
       .sort((a, b) => b[1] - a[1])
       .forEach(([room, hrs]) => {
@@ -1782,24 +1787,24 @@ export const exportTermReport = async (req, res) => {
     summarySheet.addRow([]);
 
     const header2 = summarySheet.addRow(['👨‍🏫 สถิติการจองและสอนของอาจารย์/บุคลากร (Top 10)']);
-    header2.font = { bold: true, color: { argb: 'FF008000' } }; 
+    header2.font = { bold: true, color: { argb: 'FF008000' } };
     summarySheet.addRow(['ชื่อ-นามสกุล', 'ชั่วโมงรวม', '']).font = { bold: true };
-    
+
     Object.entries(teacherStats)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 10) 
+      .slice(0, 10)
       .forEach(([name, hrs]) => {
         summarySheet.addRow([name, `${hrs.toFixed(2)} ชม.`, '']);
       });
     summarySheet.addRow([]);
 
     const header3 = summarySheet.addRow(['📈 สถิติการดำเนินการจอง และ จุดประสงค์ยอดฮิต']);
-    header3.font = { bold: true, color: { argb: 'FFE65C00' } }; 
+    header3.font = { bold: true, color: { argb: 'FFE65C00' } };
     summarySheet.addRow(['สถานะการจอง', 'จำนวนครั้ง', '']).font = { bold: true };
     summarySheet.addRow(['อนุมัติ (Approved / Completed)', `${(statusStats['approved'] || 0) + (statusStats['completed'] || 0)} ครั้ง`, '']);
     summarySheet.addRow(['รออนุมัติ (Pending)', `${statusStats['pending'] || 0} ครั้ง`, '']);
     summarySheet.addRow(['ยกเลิก/ปฏิเสธ (Cancelled / Rejected)', `${(statusStats['cancelled'] || 0) + (statusStats['rejected'] || 0)} ครั้ง`, '']);
-    
+
     summarySheet.addRow([]);
     summarySheet.addRow(['จุดประสงค์การจองห้อง (Top 5)', 'ชั่วโมงรวม', '']).font = { bold: true };
     Object.entries(purposeStats)
@@ -1813,34 +1818,34 @@ export const exportTermReport = async (req, res) => {
     const bookingSheet = workbook.addWorksheet('ประวัติการจอง (Bookings)');
     bookingSheet.columns = [
       { header: 'ห้อง', key: 'room_id', width: 15 },
-      { header: 'ผู้จอง', key: 'booker_name', width: 30 }, 
+      { header: 'ผู้จอง', key: 'booker_name', width: 30 },
       { header: 'เหตุผลการขอจอง', key: 'purpose', width: 35 },
       { header: 'เวลาเริ่ม', key: 'start_time', width: 15 },
       { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
       { header: 'วันที่', key: 'date', width: 15 },
-      { header: 'สถานะ', key: 'status', width: 15 }, 
-      { header: 'อนุมัติโดย', key: 'approver_name', width: 25 } 
+      { header: 'สถานะ', key: 'status', width: 15 },
+      { header: 'อนุมัติโดย', key: 'approver_name', width: 25 }
     ];
     bookingSheet.getRow(1).font = { bold: true };
     bookingSheet.addRows(bookingResult.rows);
 
     // 📚 ---- Sheet 3 เป็นต้นไป: ตารางเรียน (แยกตามห้อง room_id) ----
     const scheduleGroups = {};
-    
+
     scheduleResult.rows.forEach(row => {
       // 🚨 1. ล้างชื่อห้องให้สะอาด (ลบตัวอักษรที่ Excel ห้ามใช้)
       let cleanRoomId = row.room_id ? row.room_id.toString().replace(/[*?\[\]\\/:]/g, '-') : 'ไม่ระบุห้อง';
       const key = cleanRoomId.trim();
-      
+
       if (!scheduleGroups[key]) {
         let rawSheetName = `ห้อง ${key}`;
         let safeSheetName = rawSheetName.substring(0, 31); // ห้ามเกิน 31 ตัว
-        
+
         let counter = 1;
         let finalSheetName = safeSheetName;
         while (workbook.getWorksheet(finalSheetName)) {
-           finalSheetName = `${safeSheetName.substring(0, 26)} (${counter})`;
-           counter++;
+          finalSheetName = `${safeSheetName.substring(0, 26)} (${counter})`;
+          counter++;
         }
         scheduleGroups[key] = { sheetName: finalSheetName, rows: [] };
       }
@@ -1851,7 +1856,7 @@ export const exportTermReport = async (req, res) => {
     for (const groupKey in scheduleGroups) {
       const groupData = scheduleGroups[groupKey];
       const scheduleSheet = workbook.addWorksheet(groupData.sheetName);
-      
+
       scheduleSheet.columns = [
         { header: 'รายวิชา', key: 'subject_name', width: 35 },
         { header: 'อาจารย์ผู้สอน', key: 'full_name', width: 30 },
@@ -1860,15 +1865,15 @@ export const exportTermReport = async (req, res) => {
         { header: 'เวลาสิ้นสุด', key: 'end_time', width: 15 },
         { header: 'SEC', key: 'sec', width: 10 }
       ];
-      
+
       scheduleSheet.getRow(1).font = { bold: true };
 
       // 🚨 2. ตรวจสอบวันที่ให้ชัวร์ก่อนลง Excel
       const formattedRows = groupData.rows.map(r => {
         let displayDate = '';
         if (r.date) {
-            const d = new Date(r.date);
-            displayDate = isNaN(d.getTime()) ? r.date : d.toLocaleDateString('th-TH');
+          const d = new Date(r.date);
+          displayDate = isNaN(d.getTime()) ? r.date : d.toLocaleDateString('th-TH');
         }
         return { ...r, date: displayDate };
       });
@@ -1896,20 +1901,20 @@ export const showReport = async (req, res) => {
   try {
     // 💡 1. ระบุตัวบุคคล: สมมติว่าดึงมาจาก Token ของคนที่ Login อยู่
     // (ถ้าเป็นแอดมินค้นหาให้คนอื่น อาจจะเปลี่ยนไปรับจาก req.params.id แทนได้ครับ)
-    const userId = req.user.user_id; 
+    const userId = req.user.user_id;
 
     // ==========================================
     // 📅 2. คำนวณหาวันจันทร์ และวันอาทิตย์ ของสัปดาห์นี้
     // ==========================================
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0 = วันอาทิตย์, 1 = วันจันทร์, ..., 6 = วันเสาร์
-    
+
     // JS มองวันอาทิตย์คือวันแรกของสัปดาห์ (0) ถ้าเป็นวันอาทิตย์เราต้องถอยไป 6 วันเพื่อหาวันจันทร์
     const distanceToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    
+
     const monday = new Date(today);
     monday.setDate(today.getDate() + distanceToMonday);
-    
+
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6); // วันอาทิตย์คือวันจันทร์ + 6 วัน
 
@@ -2026,13 +2031,13 @@ export const showReportForStaff = async (req, res) => {
       ORDER BY start_date ASC
     `;
     const termResult = await pool.query(termQuery);
-    
+
     if (termResult.rowCount === 0) {
       return res.status(404).json({ message: 'ไม่พบข้อมูลเทอมในระบบ กรุณาตั้งค่าเทอมก่อน' });
     }
 
     const terms = termResult.rows;
-    
+
     // แปลงวันปัจจุบันให้อยู่ในฟอร์แมต YYYY-MM-DD เพื่อเทียบกับฐานข้อมูล
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -2059,7 +2064,7 @@ export const showReportForStaff = async (req, res) => {
     // ==========================================
     // 🗄️ 2. ดึงข้อมูลการใช้ห้องทั้งหมดในช่วงเทอมนั้น
     // ==========================================
-    
+
     // ดึงข้อมูลการจอง (Booking) ที่ผ่านการอนุมัติแล้ว
     const bookingQuery = `
       SELECT b.room_id, b.start_time, b.end_time, u.user_id, u.name, u.surname
@@ -2082,8 +2087,8 @@ export const showReportForStaff = async (req, res) => {
     // ==========================================
     // 🧮 3. คำนวณและจัดกลุ่มข้อมูล
     // ==========================================
-    const roomUsage = {};    
-    const teacherUsage = {}; 
+    const roomUsage = {};
+    const teacherUsage = {};
     let totalTermHours = 0;
 
     const calculateHours = (startStr, endStr) => {
@@ -2103,7 +2108,7 @@ export const showReportForStaff = async (req, res) => {
 
         // 🧑‍🏫 สะสมยอดรายบุคคล (อาจารย์/ผู้จอง)
         const fullName = `${item.name || ''} ${item.surname || ''}`.trim();
-        const userKey = item.user_id || fullName; 
+        const userKey = item.user_id || fullName;
 
         if (!teacherUsage[userKey]) {
           teacherUsage[userKey] = {
@@ -2122,7 +2127,7 @@ export const showReportForStaff = async (req, res) => {
     // ==========================================
     // 🧹 4. จัดรูปแบบ Object ให้เป็น Array 
     // ==========================================
-    
+
     const summaryByRoom = Object.keys(roomUsage).map(roomId => ({
       room_id: roomId,
       total_hours: roomUsage[roomId]
