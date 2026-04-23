@@ -149,8 +149,6 @@ export const importClassSchedules = async (req, res) => {
       }
     });
 
-    console.log(`📥 ได้รับข้อมูลต้นแบบ ${importedData.length} รายการ (จะถูกขยายเป็นสัปดาห์)`);
-
     if (importedData.length === 0) {
       return res.status(400).json({ message: 'ไม่พบข้อมูลตารางเรียนในไฟล์ Excel (ไฟล์ว่าง)' });
     }
@@ -365,7 +363,6 @@ export const importClassSchedules = async (req, res) => {
 
                   if (diffMinutes < COOLDOWN_MINUTES) {
                     shouldSendEmail = false;
-                    console.log(`⏳ [Rate Limit] ข้ามการส่งเมลยกเลิกอัตโนมัติให้ ${toEmail}`);
                   }
                 }
 
@@ -382,10 +379,7 @@ export const importClassSchedules = async (req, res) => {
                     timeSlotStr,
                     subjectName
                   );
-
-                  console.log(`สั่งส่งอีเมลแจ้งยกเลิก Booking ID: ${conflict.booking_id} ไปที่ ${toEmail} เรียบร้อยแล้ว`);
                 }
-                console.log(`ยกเลิก Booking ID: ${conflict.booking_id} อัตโนมัติ เนื่องจากชนตารางเรียนวิชา ${subjectName}`);
               }
             }
           }
@@ -463,8 +457,6 @@ export const confirmSchedules = async (req, res) => {
 
   try {
     await client.query('BEGIN'); // 🚦 เริ่ม Transaction 
-
-    console.log(`💾 กำลังบันทึกข้อมูลตารางเรียนชุดใหม่จำนวน ${schedules.length} รายการ...`);
 
     // 🚨 เตรียมคำสั่งบันทึกข้อมูล (เพิ่ม course_code เข้าไปแล้ว)
     const insertScheduleQuery = `
@@ -1015,9 +1007,6 @@ export const confirmReuploadSchedules = async (req, res) => {
       [roomId]
     );
 
-    console.log(`🗑️ ลบข้อมูลตารางเรียนชุดเก่าของห้อง ${roomId} ทิ้งแล้ว`);
-    console.log(`💾 กำลังบันทึกข้อมูลตารางเรียนชุดใหม่ ${schedules.length} รายการ...`);
-
     // 💡 2. สร้าง "กำแพงใหม่": วนลูป Insert ข้อมูลที่มาจากไฟล์ใหม่ลงไป
     const insertScheduleQuery = `
       INSERT INTO public."Schedules" 
@@ -1124,8 +1113,6 @@ export const reuploadScheduleFile = async (req, res) => {
         importedData.push(rowData);
       }
     });
-
-    console.log(`📥 [Re-upload] ได้รับข้อมูลไฟล์ใหม่ ${importedData.length} รายการ (ห้อง: ${targetRoomId})`);
 
     // ==========================================
     // 🧑‍🏫 เตรียมข้อมูลอาจารย์
@@ -1710,11 +1697,6 @@ export const exportTermReport = async (req, res) => {
        ORDER BY s.room_id ASC, s.date ASC, s.start_time ASC`,
       [startDate, endDate]
     );
-
-    console.log(`📊 ดึงข้อมูลจาก DB ได้ทั้งหมด: ${scheduleResult.rows.length} แถว`);
-    if (scheduleResult.rows.length > 0) {
-      console.log(`🏢 ตัวอย่างห้องที่เจอ: ${scheduleResult.rows[0].room_id}`);
-    }
 
     // ==========================================
     // 🧠 3. คำนวณข้อมูลสำหรับ Dashboard

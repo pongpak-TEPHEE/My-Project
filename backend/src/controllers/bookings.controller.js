@@ -40,7 +40,6 @@ export const getPendingBookings = async (req, res) => {
 
     // ตรวจสอบว่ามีรายการที่ถูกยกเลิกหรือไม่ (มากกว่า 0)
     if (expiredResult.rowCount > 0) {
-      console.log(`[Auto-Cancel] พบรายการจองที่หมดเวลา ${expiredResult.rowCount} รายการ กำลังวนลูปส่งอีเมล...`);
       
       // วนลูปทีละรายการ (ใช้ for...of เพื่อให้ await ทำงานตามลำดับทีละคิว)
       for (const row of expiredResult.rows) {
@@ -59,8 +58,6 @@ export const getPendingBookings = async (req, res) => {
         // เรียกใช้ฟังก์ชันส่งอีเมล
         await sendBookingExpiredEmail(row.email, userName, roomId, formattedDate, timeSlot);
       }
-      
-      console.log(`[Auto-Cancel] ส่งอีเมลแจ้งเตือนครบทั้ง ${expiredResult.rowCount} รายการแล้ว`);
     }
 
     // ========================================================
@@ -646,7 +643,6 @@ const emailCooldowns = new Map();
 export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
   const { status, cancel_reason } = req.body;
-  console.log("body:", req.body);
 
   if (!['approved', 'rejected', 'pending'].includes(status)) {
     return res.status(400).json({ message: 'สถานะไม่ถูกต้อง' });
@@ -700,7 +696,6 @@ export const updateBookingStatus = async (req, res) => {
 
         if (diffMinutes < COOLDOWN_MINUTES) {
           shouldSendEmail = false;
-          console.log(`Rate Limit ป้องกันการ Spam: ข้ามการส่งเมลสถานะ ${status} ให้ ${email} (เพิ่งส่งไปเมื่อ ${diffMinutes.toFixed(1)} นาทีที่แล้ว)`);
         }
       }
 
@@ -919,7 +914,6 @@ export const cancelBooking = async (req, res) => {
         timeSlot,
         cancel_reason || 'เจ้าหน้าที่ได้ทำการยกเลิกการจองนี้'
       );
-      console.log(`[System] สั่งส่งอีเมลแจ้งยกเลิกการจองให้ ${booking.email} เรียบร้อยแล้ว`);
     }
 
     // กรณีที่ 2: Teacher เป็นคนกดยกเลิกการจองของตัวเอง
@@ -941,7 +935,6 @@ export const cancelBooking = async (req, res) => {
           timeSlot,
           cancel_reason || 'อาจารย์ผู้จองได้ทำการยกเลิก/งดใช้ห้องด้วยตนเอง'
         );
-        console.log(`[System] สั่งส่งอีเมลแจ้งเตือน Staff เรื่องอาจารย์ ${teacherFullName} งดใช้ห้องเรียบร้อยแล้ว`);
       }
     }
 
@@ -1107,8 +1100,6 @@ export const getMyActiveBookings = async (req, res) => {
 
     // ถ้ามีรายการที่ถูกยกเลิก ให้วนลูปส่งอีเมลแจ้งเจ้าตัว
     if (expiredResult.rowCount > 0) {
-      console.log(`[My Bookings] พบรายการ Pending ของ User ${user_id} ที่หมดเวลา ${expiredResult.rowCount} รายการ กำลังส่งอีเมล...`);
-      
       for (const row of expiredResult.rows) {
         const userName = `${row.name || ''} ${row.surname || ''}`.trim();
         const roomId = row.room_id;
@@ -1214,13 +1205,6 @@ export const getMyBookingHistory = async (req, res) => {
     // ทำงานพร้อมกัน
     const [bookingResult, scheduleResult] = await Promise.all([bookingQuery, scheduleQuery]);
 
-    // ---------------------------------------------------------
-    // 🔍 [Log จุดที่ 1]: เช็คจำนวนข้อมูลดิบที่ได้จาก Database
-    // ---------------------------------------------------------
-    console.log(`\n=== 🔍 [DEBUG] getMyBookingHistory (User: ${user_id}) ===`);
-    console.log(`📦 เจอข้อมูล Booking: ${bookingResult.rows.length} รายการ`);
-    console.log(`📦 เจอข้อมูล Schedule (ยกเลิกคลาส): ${scheduleResult.rows.length} รายการ`);
-
     // Merge & Normalize
     // แปลงข้อมูล Booking
     const bookings = bookingResult.rows.map(row => ({
@@ -1258,21 +1242,6 @@ export const getMyBookingHistory = async (req, res) => {
       if (dateB - dateA !== 0) return dateB - dateA;
       return a.start_time.localeCompare(b.start_time);
     });
-
-    // ---------------------------------------------------------
-    // 🚀 [Log จุดที่ 2]: เช็คหน้าตาข้อมูลที่จัด Format เสร็จแล้ว 
-    // โชว์ทุกรายการที่ส่งไป Frontend
-    // ---------------------------------------------------------
-    console.log(`\n🚀 ข้อมูลทั้งหมดหลังรวมกัน (รวม ${allHistory.length} รายการ)`);
-    if (allHistory.length > 0) {
-      console.log("รายการข้อมูลที่ส่งไปทั้งหมด:");
-      // เอา .slice(0, 3) ออก เพื่อให้แสดงผลทุกแถว
-      console.log(JSON.stringify(allHistory, null, 2)); 
-    } else {
-      console.log("ไม่มีข้อมูลประวัติส่งไปครับ (Array ว่าง)");
-    }
-    console.log("=========================================================\n");
-
     res.json(allHistory);
 
   } catch (error) {

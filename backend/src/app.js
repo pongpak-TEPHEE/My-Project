@@ -30,7 +30,8 @@ app.use(helmet());
 const allowedOrigins = [
   process.env.FRONTEND_URL, // โดเมนจริง (ดึงจาก .env)
   'http://localhost:5173',  // เผื่อไว้เทส Frontend บนเครื่องตัวเอง
-  'http://localhost:5174'
+  'http://localhost:5174',
+  'https://kusrc-sci-bookings.netlify.app'
 ].filter(Boolean); // กรองค่า undefined ออก
 
 app.use(cors({
@@ -63,7 +64,6 @@ app.use('/terms', termRoutes);
 // ==========================================
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
-  console.log('📄 Swagger UI is available at /api-docs');
 }
 
 // ดักจับ 404 Not Found

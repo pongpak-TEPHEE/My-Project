@@ -5,14 +5,10 @@ export const startCleanupJob = () => {
   
   // 1. ลบ OTP ที่หมดอายุ (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
-    console.log('🧹 Running OTP Cleanup Job...');
     try {
       const result = await pool.query(
         `DELETE FROM public."OTP" WHERE expired_at < NOW()`
       );
-      if (result.rowCount > 0) {
-        console.log(`✅ OTP Cleanup: Deleted ${result.rowCount} expired OTPs.`);
-      }
     } catch (error) {
       console.error('❌ OTP Cleanup Error:', error);
     }
@@ -23,7 +19,6 @@ export const startCleanupJob = () => {
 
   // 2. อัปเดตสถานะการจองที่ "เรียนเสร็จแล้ว" ให้เป็น 'completed' (รันทุกชั่วโมง)
   cron.schedule('0 * * * *', async () => {
-    console.log('🔄 Running Booking Status Update Job...');
     try {
       const result = await pool.query(
         `UPDATE public."Booking"
@@ -34,10 +29,6 @@ export const startCleanupJob = () => {
           OR (date = CURRENT_DATE AND end_time < CURRENT_TIME)
         )`
       );
-
-      if (result.rowCount > 0) {
-        console.log(`✅ Status Update: Marked ${result.rowCount} bookings as completed.`);
-      }
     } catch (error) {
       console.error('❌ Status Update Error:', error);
     }
@@ -48,8 +39,6 @@ export const startCleanupJob = () => {
 
   // 3. ลบ Booking เก่าตามรอบเทอม (รันทุกวัน เวลา 00:00 น.)
   cron.schedule('0 0 * * *', async () => {
-    console.log('⏳ [Daily Maintenance] เริ่มทำงาน...');
-    
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -60,10 +49,6 @@ export const startCleanupJob = () => {
         SET status = 'cancelled'
         WHERE status = 'pending' AND date < CURRENT_DATE
       `);
-      
-      if (autoCancelResult.rowCount > 0) {
-        console.log(`🚫 [Auto-Cancel] เปลี่ยนสถานะคำขอที่หมดอายุเป็น cancelled จำนวน ${autoCancelResult.rowCount} รายการ`);
-      }
 
       // 🔄 3.2 จัดการสถานะปีการศึกษา (Active -> Past)
       const activeExpired = await client.query(`
@@ -77,14 +62,12 @@ export const startCleanupJob = () => {
         const expiredYear = activeExpired.rows[0].academic_year;
         
         await client.query(`DELETE FROM public."Terms" WHERE status = 'past'`);
-        console.log(`🧹 [Term Update] ล้างข้อมูลเทอม past ของปีก่อนหน้าออกจากระบบเรียบร้อย`);
 
         await client.query(`
           UPDATE public."Terms" 
           SET status = 'past' 
           WHERE status = 'active'
         `);
-        console.log(`✅ [Term Update] สิ้นสุดปีการศึกษา ${expiredYear} ปรับสถานะเป็น 'past' สำเร็จ`);
       }
 
       // 🧹 3.3 กวาดล้างข้อมูลการจองเก่า (หน่วงเวลา 7 วัน)
@@ -120,22 +103,14 @@ export const startCleanupJob = () => {
               WHERE date >= $1 AND date <= $2
               AND status IN ('rejected', 'completed', 'cancelled')
             `, [start_year, end_year]);
-
-            if (historyDel.rowCount > 0) {
-              console.log(`✅ [Booking Cleanup] ครบ 7 วัน: ลบประวัติการจองเก่าจำนวน ${historyDel.rowCount} รายการ`);
-            } else {
-              console.log(`✨ [Booking Cleanup] ไม่มีประวัติการจองเก่าที่ตรงเงื่อนไขให้ลบ`);
-            }
           }
         } else {
           const diffTime = Math.abs(targetCleanupDate - today);
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          console.log(`⏳ [Booking Cleanup] อยู่ในช่วง Grace Period (รออีก ${diffDays} วัน)`);
         }
       }
 
       await client.query('COMMIT');
-      console.log('✨ [Daily Maintenance] ทำงานเสร็จสมบูรณ์');
 
     } catch (error) {
       await client.query('ROLLBACK');
@@ -150,14 +125,10 @@ export const startCleanupJob = () => {
 
   // 4. ลบ Token เก่า (รันตอนตี 3 ทุกวัน)
   cron.schedule('0 3 * * *', async () => {
-    console.log('🧹 Running Token Blacklist Cleanup...');
     try {
       const result = await pool.query(
         'DELETE FROM public."TokenBlacklist" WHERE expires_at < NOW()'
       );
-      if (result.rowCount > 0) {
-          console.log(`✅ Deleted ${result.rowCount} expired tokens.`);
-      }
     } catch (error) {
       console.error('❌ Token Cleanup Error:', error);
     }

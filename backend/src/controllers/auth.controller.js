@@ -182,42 +182,33 @@ export const verifyOTP = async (req, res) => {
 // /auth//refresh-token
 // ฟังก์ชันต่ออายุ Access Token
 export const refreshToken = async (req, res) => {
-  console.log("-------------------------------------\n");
-  console.log("refresh token ทำงาน");
 
   // 1. ดึง Refresh Token จาก Cookie ที่เบราว์เซอร์แนบมาให้
   const token = req.cookies.refreshToken;
-  console.log(`refreshToken คือ ${token}`);
 
   if (!token) {
-    console.log("ไม่พบ refresh token");
     return res.status(401).json({ message: 'ไม่พบ Refresh Token กรุณาเข้าสู่ระบบใหม่' });
   }
 
   try {
     // 2. ตรวจสอบว่า Refresh Token ถูกต้องและยังไม่หมดอายุใช่ไหม
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    console.log(`Decoded token คือ ${decoded}`);
 
     // 🚨 วิ่งไปเช็คข้อมูลล่าสุดใน Database (จุดที่เพิ่มเข้ามา!)
-    console.log(`decoded.user_id ${decoded.user_id}`);
     const userResult = await pool.query(
       `SELECT user_id, role, name, session_id, is_active FROM public."Users" WHERE user_id = $1`,
       [decoded.user_id]
     );
-    console.log(`ข้อมูลของ user ที่จะต่ออายุ token = ${userResult.rows[0]}`);
 
     // ตรวจสอบว่ายังมี User คนนี้อยู่ไหม หรือถูกระงับการใช้งานไปหรือยัง
     if (userResult.rows.length === 0 || userResult.rows[0].is_active === false) {
       res.clearCookie('refreshToken'); // ริบกุญแจคืน
-      console.log("ไม่มีบัญชีนี้อยู่")
       return res.status(401).json({ message: 'บัญชีผู้ใช้ถูกระงับ หรือไม่มีอยู่ในระบบแล้ว' });
     }
 
     const currentUser = userResult.rows[0];
 
     // 3. สร้าง Access Token ดอกใหม่ (อายุ 1 ชม. เหมือนเดิม)
-    console.log("new token ถูกสร้าง");
     const newAccessToken = jwt.sign(
       { user_id: currentUser.user_id,
         role: currentUser.role,
@@ -228,14 +219,12 @@ export const refreshToken = async (req, res) => {
       { expiresIn: '30m' }
     );
 
-    console.log(`new tokent = ${newAccessToken}`);
     // 4. ส่งกุญแจดอกใหม่กลับไปให้ Frontend
     res.json({ token: newAccessToken });
 
   } catch (error) {
     // ถ้า Refresh Token หมดอายุ (ครบ 7 วัน) หรือโดนปลอมแปลง ให้ลบทิ้ง
     res.clearCookie('refreshToken');
-    console.log("เข้าสู่ระบบใหม่")
     return res.status(401).json({ message: 'Refresh Token หมดอายุ กรุณาเข้าสู่ระบบใหม่' });
   }
 };
@@ -243,7 +232,6 @@ export const refreshToken = async (req, res) => {
 // /auth/logout
 // เป็นการลบ token ของผู้ใช้ออก และเคลียร์ Refresh Token ใน Cookie
 export const logout = async (req, res) => {
-  console.log("function logout กำลังทำงาน !!!!!");
   try {
     // ==========================================
     // 🛡️ 1. จัดการ Access Token (ยัดลง Blacklist และลบ Session)
