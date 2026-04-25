@@ -1,0 +1,81 @@
+/auth/request-otp:
+  post:
+    tags:
+      - Auth
+    summary: Request OTP for login
+    description: Sends a 6-digit OTP to a @ku.th email. Implements a 60-second cooldown between requests.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RequestOTP'
+    responses:
+      '200':
+        description: OTP sent successfully
+      '400':
+        description: Email domain not @ku.th
+      '403':
+        description: Account is suspended (is_active = false)
+      '404':
+        description: Email not found in system
+      '429':
+        description: Request cooldown (Too many requests)
+      '500':
+        description: Server error or mailer failure
+
+/auth/verify-otp:
+  post:
+    tags:
+      - Auth
+    summary: Verify OTP and login
+    description: Verifies OTP, generates JWT (Access & Refresh tokens), and sets HttpOnly cookie for refresh token.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VerifyOTP'
+    responses:
+      '200':
+        description: Login successful
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginResponse'
+      '400':
+        description: Invalid or expired OTP
+      '404':
+        description: User not found after verification
+      '500':
+        description: Server error
+
+/auth/refresh-token:
+  post:
+    tags:
+      - Auth
+    summary: Refresh Access Token
+    description: Uses HttpOnly Refresh Token cookie to generate a new Access Token.
+    responses:
+      '200':
+        description: Token refreshed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenResponse'
+      '401':
+        description: Invalid/expired Refresh Token or account suspended
+
+/auth/logout:
+  post:
+    tags:
+      - Auth
+    summary: Logout user
+    description: Blacklists current Access Token and clears Refresh Token cookie.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: Logout successful
+      '500':
+        description: Server error

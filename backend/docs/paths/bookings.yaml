@@ -1,0 +1,318 @@
+/bookings/pending:
+  get:
+    tags:
+      - Bookings
+    summary: Get pending bookings (Staff and Teacher)
+    description: Returns a list of bookings waiting for approval.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of pending bookings
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Booking'
+      '500':
+        description: Internal server error
+
+/bookings/approved:
+  get:
+    tags:
+      - Bookings
+    summary: Get approved bookings (Staff and Teacher)
+    description: Returns a list of bookings that are currently approved and upcoming.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of approved bookings
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Booking'
+      '500':
+        description: Internal server error
+
+/bookings/rejected:
+  get:
+    tags:
+      - Bookings
+    summary: Get rejected bookings (Staff and Teacher)
+    description: Returns a list of bookings that were rejected.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of rejected bookings
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Booking'
+      '500':
+        description: Internal server error
+
+/bookings/teacher:
+  post:
+    tags:
+      - Bookings
+    summary: Create booking (Teacher role)
+    description: Submit a booking request. Only for users with 'teacher' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BookingRequest'
+    responses:
+      '201':
+        description: "Booking request submitted (Status: Pending)"
+      '400':
+        description: "Validation error"
+      '409':
+        description: Conflict with existing class schedule or approved booking
+      '500':
+        description: Internal server error
+
+/bookings/staff:
+  post:
+    tags:
+      - Bookings
+    summary: Create booking (Staff role)
+    description: Create a booking that is automatically approved. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BookingRequest'
+    responses:
+      '201':
+        description: "Booking created successfully (Status: Approved)"
+      '400':
+        description: "Validation error"
+      '404':
+        description: Room not found
+      '409':
+        description: Conflict with existing class schedule or approved booking
+      '500':
+        description: Internal server error
+
+/bookings/allBooking:
+  get:
+    tags:
+      - Bookings
+    summary: Get all approved bookings across all rooms
+    description: Public access to view all approved bookings.
+    parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+        description: Comma-separated status list
+    responses:
+      '200':
+        description: List of bookings
+      '500':
+        description: Internal server error
+
+/bookings/allBookingSpecific/{roomId}:
+  get:
+    tags:
+      - Bookings
+    summary: Get room-specific approved bookings for calendar
+    description: Public access to view approved bookings for a specific room.
+    parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          type: string
+        description: Comma-separated status list (default is 'approved')
+    responses:
+      '200':
+        description: List of bookings
+      '500':
+        description: Internal server error
+
+/bookings/my-history:
+  get:
+    tags:
+      - Bookings
+    summary: Get my booking history
+    description: Returns history for the currently logged-in user.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of user bookings
+      '500':
+        description: Internal server error
+
+/bookings/my-bookings/active:
+  get:
+    tags:
+      - Bookings
+    summary: Get my active bookings (Teacher only)
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of active bookings
+      '500':
+        description: Internal server error
+
+/bookings/my-bookings/history:
+  get:
+    tags:
+      - Bookings
+    summary: Get my past booking history (Teacher only)
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of past bookings
+      '500':
+        description: Internal server error
+
+/bookings/scope:
+  get:
+    tags:
+      - Bookings
+    summary: Get booking scope settings (Staff and Teacher)
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: Booking scope data
+      '500':
+        description: Internal server error
+  put:
+    tags:
+      - Bookings
+    summary: Update booking scope settings (Staff only)
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BookingScope'
+    responses:
+      '200':
+        description: Scope updated
+      '500':
+        description: Internal server error
+
+/bookings/{id}:
+  get:
+    tags:
+      - Bookings
+    summary: Check room status by scan
+    description: Public access for QR code scans to check room availability.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Room ID
+    responses:
+      '200':
+        description: Room status data
+      '404':
+        description: Room not found
+      '500':
+        description: Internal server error
+  put:
+    tags:
+      - Bookings
+    summary: Edit a booking (Staff and Teacher)
+    description: Allows Staff or Teacher to edit a booking.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BookingRequest'
+    responses:
+      '200':
+        description: Booking updated
+      '500':
+        description: Internal server error
+
+/bookings/{id}/status:
+  put:
+    tags:
+      - Bookings
+    summary: Update booking status (Staff only)
+    description: "Approve or reject a booking request. Note: Route uses PUT /:id/status."
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Booking ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateBookingStatusRequest'
+    responses:
+      '200':
+        description: Status updated successfully
+      '400':
+        description: Invalid status value
+      '404':
+        description: Booking not found
+      '500':
+        description: Internal server error
+
+/bookings/{id}/cancel:
+  put:
+    tags:
+      - Bookings
+    summary: Cancel a booking
+    description: Allows a user to cancel their own booking.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Booking cancelled
+      '404':
+        description: Booking not found
+      '500':
+        description: Internal server error

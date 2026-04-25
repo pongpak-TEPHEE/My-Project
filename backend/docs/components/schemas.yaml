@@ -1,0 +1,732 @@
+components:
+  schemas:
+    # ==============================================
+    # User schemas
+    # ==============================================
+    User:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: "20-character random string ID"
+        title:
+          type: string
+        name:
+          type: string
+        surname:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [teacher, staff, admin]
+
+    RequestOTP:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@ku.th"
+
+    VerifyOTP:
+      type: object
+      required:
+        - email
+        - otp_code
+      properties:
+        email:
+          type: string
+          format: email
+        otp_code:
+          type: string
+          example: "123456"
+
+    LoginResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+
+    LogoutResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    # ==============================================
+    # Booking schemas
+    # ==============================================
+    Booking:
+      type: object
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        purpose:
+          type: string
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "08:30"
+        end_time:
+          type: string
+          example: "10:30"
+        status:
+          type: string
+          enum: [pending, approved, rejected, cancelled]
+        cancel_reason:
+          type: string
+        additional_notes:
+          type: string
+        teacher_name:
+          type: string
+        teacher_surname:
+          type: string
+
+    BookingRequest:
+      type: object
+      required:
+        - room_id
+        - purpose
+        - date
+        - start_time
+        - end_time
+      properties:
+        room_id:
+          type: string
+        purpose:
+          type: string
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "08:30"
+        end_time:
+          type: string
+          example: "10:30"
+        additional_notes:
+          type: string
+
+    UpdateBookingStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [approved, rejected, pending]
+        cancel_reason:
+          type: string
+
+    BookingScope:
+      type: object
+      properties:
+        opening_mins:
+          type: string
+          example: "08:00:00"
+        closing_mins:
+          type: string
+          example: "20:00:00"
+        max_duration_hours:
+          type: integer
+          example: 12
+        max_advance_days:
+          type: integer
+          example: 10
+        min_advance_hours:
+          type: integer
+          example: 0
+        date_create:
+          type: string
+          format: date
+
+    BookingHistory:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [booking, class_schedule]
+        purpose:
+          type: string
+        teacher_name:
+          type: string
+        room_id:
+          type: string
+        date:
+          type: string
+        start_time:
+          type: string
+        end_time:
+          type: string
+        status:
+          type: string
+
+    # ==============================================
+    # Room schemas
+    # ==============================================
+    Room:
+      type: object
+      properties:
+        room_id:
+          type: string
+        room_type:
+          type: string
+        capacity:
+          type: integer
+        location:
+          type: string
+        room_characteristics:
+          type: string
+        repair:
+          type: boolean
+        is_active:
+          type: boolean
+        status_text:
+          type: string
+        status_color:
+          type: string
+
+    Equipment:
+      type: object
+      properties:
+        projector:
+          type: integer
+        microphone:
+          type: integer
+        computer:
+          type: integer
+        whiteboard:
+          type: integer
+        type_of_computer:
+          type: string
+
+    RoomDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        capacity:
+          type: integer
+        location:
+          type: string
+        description:
+          type: string
+        repair:
+          type: boolean
+        facilities:
+          type: array
+          items:
+            type: string
+
+    CreateRoomRequest:
+      type: object
+      required:
+        - room_id
+        - room_type
+        - location
+        - capacity
+      properties:
+        room_id:
+          type: string
+        room_type:
+          type: string
+        location:
+          type: string
+        capacity:
+          type: integer
+        room_characteristics:
+          type: string
+        repair:
+          type: boolean
+        equipments:
+          $ref: '#/components/schemas/Equipment'
+
+    RoomSearchRequest:
+      type: object
+      required:
+        - date
+        - start_time
+        - end_time
+      properties:
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "09:00"
+        end_time:
+          type: string
+          example: "12:00"
+        capacity:
+          type: integer
+
+    RoomScheduleToday:
+      type: object
+      properties:
+        room:
+          $ref: '#/components/schemas/Room'
+        status:
+          type: string
+          enum: [available, busy, closed]
+        current_activity:
+          type: string
+        schedule:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              start_time:
+                type: string
+              end_time:
+                type: string
+              title:
+                type: string
+              type:
+                type: string
+                enum: [booking, class]
+
+    # ==============================================
+    # Schedule schemas
+    # ==============================================
+    Schedule:
+      type: object
+      properties:
+        schedule_id:
+          type: string
+          format: uuid
+        room_id:
+          type: string
+        subject_name:
+          type: string
+        course_code:
+          type: string
+        teacher_name:
+          type: string
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "09:00"
+        end_time:
+          type: string
+          example: "12:00"
+        academic_year:
+          type: string
+        semester:
+          type: integer
+        temporarily_closed:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateScheduleRequest:
+      type: object
+      required:
+        - room_id
+        - subject_name
+        - course_code
+        - teacher_name
+        - date
+        - start_time
+        - end_time
+        - academic_year
+        - semester
+      properties:
+        room_id:
+          type: string
+        subject_name:
+          type: string
+        course_code:
+          type: string
+        teacher_name:
+          type: string
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "09:00"
+        end_time:
+          type: string
+          example: "12:00"
+        academic_year:
+          type: string
+        semester:
+          type: integer
+
+    UpdateScheduleRequest:
+      type: object
+      properties:
+        room_id:
+          type: string
+        subject_name:
+          type: string
+        course_code:
+          type: string
+        teacher_name:
+          type: string
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+        end_time:
+          type: string
+        temporarily_closed:
+          type: boolean
+
+    ImportScheduleResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        total_rows_excel:
+          type: integer
+        total_generated_slots:
+          type: integer
+        valid_count:
+          type: integer
+        error_count:
+          type: integer
+        previewData:
+          type: array
+          items:
+            $ref: '#/components/schemas/Schedule'
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row:
+                type: integer
+              week:
+                type: integer
+              date:
+                type: string
+              room:
+                type: string
+              type:
+                type: string
+              message:
+                type: string
+
+    ScheduleConflict:
+      type: object
+      properties:
+        conflict:
+          type: boolean
+        message:
+          type: string
+        existing_event:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [class, booking]
+            title:
+              type: string
+            start_time:
+              type: string
+            end_time:
+              type: string
+
+    ScheduleReportResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        period:
+          type: object
+          properties:
+            start_date:
+              type: string
+            end_date:
+              type: string
+        summary:
+          type: object
+          properties:
+            total_hours_this_week:
+              type: number
+            usage_by_room:
+              type: array
+              items:
+                type: object
+                properties:
+                  room_id:
+                    type: string
+                  total_hours:
+                    type: number
+        raw_data:
+          type: object
+          properties:
+            bookings:
+              type: array
+              items:
+                $ref: '#/components/schemas/Booking'
+            schedules:
+              type: array
+              items:
+                $ref: '#/components/schemas/Schedule'
+
+    StaffReportResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        term_info:
+          type: object
+          properties:
+            term_name:
+              type: string
+            start_date:
+              type: string
+            end_date:
+              type: string
+        summary:
+          type: object
+          properties:
+            total_hours_all_rooms:
+              type: number
+            room_ranking:
+              type: array
+              items:
+                type: object
+                properties:
+                  room_id:
+                    type: string
+                  total_hours:
+                    type: number
+            teacher_ranking:
+              type: array
+              items:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  name:
+                    type: string
+                  total_hours:
+                    type: number
+
+
+    # ==============================================
+    # Term schemas
+    # ==============================================
+    Term:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        academic_year:
+          type: string
+        term:
+          type: string
+          enum: [first, end, summer]
+        status:
+          type: string
+          enum: [active, past]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+
+    FillInTermRequest:
+      type: object
+      required:
+        - terms
+      properties:
+        terms:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: object
+            required:
+              - term
+              - start_date
+              - end_date
+            properties:
+              term:
+                type: string
+                enum: [first, end, summer]
+              start_date:
+                type: string
+                format: date
+              end_date:
+                type: string
+                format: date
+
+    FillInTermResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Term'
+
+    ShowTermResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        total:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Term'
+
+    # ==============================================
+    # User management schemas
+    # ==============================================
+    FullUser:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: "Randomly generated 20-character UUID"
+        title:
+          type: string
+        name:
+          type: string
+        surname:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [teacher, staff, admin]
+        is_active:
+          type: boolean
+        is_verified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateUserRequest:
+      type: object
+      required:
+        - name
+        - role
+        - email
+      properties:
+        title:
+          type: string
+        name:
+          type: string
+        surname:
+          type: string
+        email:
+          type: string
+          format: email
+          example: "someone@ku.th"
+        role:
+          type: string
+          enum: [teacher, staff, admin]
+
+    EditUserRequest:
+      type: object
+      required:
+        - name
+        - email
+      properties:
+        title:
+          type: string
+        name:
+          type: string
+        surname:
+          type: string
+        email:
+          type: string
+          format: email
+          example: "someone@ku.th"
+
+    BatchEditSubjectRequest:
+
+      type: object
+      required:
+        - old_course_code
+        - old_subject_name
+        - old_sec
+        - room_id
+        - course_code
+        - subject_name
+        - teacher_name
+        - teacher_surname
+        - date
+        - start_time
+        - end_time
+        - sec
+        - repeat
+      properties:
+        old_course_code:
+          type: string
+        old_subject_name:
+          type: string
+        old_sec:
+          type: string
+        room_id:
+          type: string
+        course_code:
+          type: string
+        subject_name:
+          type: string
+        teacher_name:
+          type: string
+        teacher_surname:
+          type: string
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          example: "08:30"
+        end_time:
+          type: string
+          example: "10:30"
+        sec:
+          type: string
+        repeat:
+          type: integer
+          minimum: 1
+        force_cancel:
+          type: boolean
+          description: "If true, cancels conflicting bookings"
+

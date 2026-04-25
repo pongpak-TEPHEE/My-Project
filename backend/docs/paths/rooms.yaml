@@ -1,0 +1,236 @@
+/rooms:
+  get:
+    tags:
+      - Rooms
+    summary: Get all active rooms
+    description: Public access to all rooms where is_active is TRUE.
+    responses:
+      '200':
+        description: List of rooms
+      '500':
+        description: Internal server error
+
+  post:
+    tags:
+      - Rooms
+    summary: Create a new room (Staff only)
+    description: Adds a new room and its equipment data. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateRoomRequest'
+    responses:
+      '201':
+        description: Room created successfully
+      '409':
+        description: Conflict - Room ID already exists
+      '500':
+        description: Internal server error
+
+/rooms/buildings:
+  get:
+    tags:
+      - Rooms
+    summary: Get list of buildings
+    description: Public access to unique locations of active rooms.
+    responses:
+      '200':
+        description: List of building names
+      '500':
+        description: Internal server error
+
+/rooms/noActive:
+  get:
+    tags:
+      - Rooms
+    summary: Get rooms under repair
+    description: Public access to rooms where repair is FALSE or NULL.
+    responses:
+      '200':
+        description: List of rooms under repair
+      '500':
+        description: Internal server error
+
+/rooms/{id}:
+  get:
+    tags:
+      - Rooms
+    summary: Get room details and facilities
+    description: Public access to room detail data.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Room ID
+    responses:
+      '200':
+        description: Room detail data including equipment list
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomDetail'
+      '404':
+        description: Room not found
+      '500':
+        description: Internal server error
+
+/rooms/{room_id}/edit:
+  put:
+    tags:
+      - Rooms
+    summary: Edit room and equipment (Staff only)
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateRoomRequest'
+    responses:
+      '200':
+        description: Update successful
+      '404':
+        description: Room not found OR invalid capacity (< 0)
+      '500':
+        description: Internal server error
+
+/rooms/{room_id}/delete:
+  patch:
+    tags:
+      - Rooms
+    summary: Delete or Deactivate room (Staff only)
+    description: Hard deletes if no history exists; otherwise soft deletes. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Room deleted or deactivated
+      '404':
+        description: Room not found
+      '500':
+        description: Internal server error
+
+/rooms/{room_id}/schedule:
+  get:
+    tags:
+      - Rooms
+    summary: Get real-time room schedule for today
+    description: Public access for QR displays.
+    parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Real-time schedule data
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomScheduleToday'
+      '404':
+        description: Room not found
+      '500':
+        description: Internal server error
+
+/rooms/{id}/qrcode:
+  get:
+    tags:
+      - Rooms
+    summary: Generate QR Code for room (Data only)
+    description: Public access to generate QR code data.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: QR Code as DataURL
+      '404':
+        description: Room not found
+      '500':
+        description: Internal server error
+
+/rooms/{id}/qrcodeURL:
+  get:
+    tags:
+      - Rooms
+    summary: Generate QR Code for room (Full URL)
+    description: Public access to generate QR code with full URL.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: QR Code as DataURL with target URL
+      '404':
+        description: Room not found
+      '500':
+        description: Internal server error
+
+/rooms/search:
+  post:
+    tags:
+      - Rooms
+    summary: Find available rooms
+    description: Requires authentication to search for available rooms.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - date
+              - start_time
+              - end_time
+            properties:
+              date:
+                type: string
+                format: date
+              start_time:
+                type: string
+                example: "08:30"
+              end_time:
+                type: string
+                example: "10:30"
+              capacity:
+                type: integer
+    responses:
+      '200':
+        description: List of available rooms
+      '400':
+        description: |
+          Validation error:
+          - Missing required fields
+          - Start time after End time
+          - Past date/time
+      '500':
+        description: Internal server error

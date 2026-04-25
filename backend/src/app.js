@@ -13,8 +13,9 @@ import usersRoutes from './routes/users.route.js';
 import scheduleRoutes from './routes/schedule.routes.js';
 import termRoutes from './routes/term.routes.js';
 
-// นำเข้า Swagger
-import { swaggerUi, specs } from './config/swagger.js';
+// 🚨 นำเข้า Swagger Libraries (เปลี่ยนจากการ import ไฟล์ YAML ตรงๆ)
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsDoc from 'swagger-jsdoc';
 
 const app = express();
 
@@ -31,6 +32,7 @@ const allowedOrigins = [
   process.env.FRONTEND_URL, // โดเมนจริง (ดึงจาก .env)
   'http://localhost:5173',  // เผื่อไว้เทส Frontend บนเครื่องตัวเอง
   'http://localhost:5174',
+  'http://localhost:3000', // ทดสอบ Swagger หลัง implement จริงต้องเอาออก
   'https://kusrc-sci-bookings.netlify.app'
 ].filter(Boolean); // กรองค่า undefined ออก
 
@@ -60,11 +62,41 @@ app.use('/schedules', scheduleRoutes);
 app.use('/terms', termRoutes);
 
 // ==========================================
-// 🔒 2. ซ่อน API Docs เมื่อรันบน Production
+// 📖 2. ตั้งค่า Swagger (Spec-First)
 // ==========================================
-if (process.env.NODE_ENV !== 'production') {
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'KUSRC Book a Room API',
+      version: '1.0.0',
+      description: 'API Documentation สำหรับระบบจองห้องเรียน KUSRC',
+    },
+    // ตั้งค่าระบบ Security พื้นฐานไว้ตรงนี้เลย
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+    security: [{ bearerAuth: [] }],
+  },
+  // 🎯 สำคัญ: ให้ไปกวาดอ่านไฟล์ .yaml ทุกไฟล์ในโฟลเดอร์ docs แทน
+  apis: ['./docs/**/*.yaml'], 
+};
+
+const specs = swaggerJsDoc(swaggerOptions);
+
+// ==========================================
+// 🔒 3. ซ่อน API Docs เมื่อรันบน Production
+// ==========================================
+// ไอเดียนี้ยอดเยี่ยมมากครับ! ป้องกันคนนอกเข้ามาดูโครงสร้าง API ของเรา
+// if (process.env.NODE_ENV !== 'production') {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
-}
+// }
 
 // ดักจับ 404 Not Found
 app.use((req, res, next) => {

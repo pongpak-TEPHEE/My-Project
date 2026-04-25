@@ -1,0 +1,47 @@
+/terms/fillInTerm:
+  post:
+    tags:
+      - Terms
+    summary: Batch setup academic terms (Staff only)
+    description: Sets up three terms for an academic year. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FillInTermRequest'
+    responses:
+      '200':
+        description: Terms saved successfully
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FillInTermResponse'
+      '400':
+        description: |
+          Validation error:
+          - Missing required fields
+          - Invalid term names
+          - Start date after End date
+      '500':
+        description: Internal server error
+
+/terms/showTerm:
+  get:
+    tags:
+      - Terms
+    summary: Get active academic terms (Staff and Teacher)
+    description: Returns the current active term settings. Accessible by Staff and Teachers.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: Active terms data
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShowTermResponse'
+      '500':
+        description: Internal server error

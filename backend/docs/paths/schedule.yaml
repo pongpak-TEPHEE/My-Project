@@ -1,0 +1,430 @@
+/schedules/import:
+  post:
+    tags:
+      - Schedules
+    summary: Upload Excel and check for conflicts (Staff only)
+    description: Parses Excel and checks for conflicts. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+              term:
+                type: string
+                enum: [first, end, summer]
+    responses:
+      '200':
+        description: OK - Returns preview data or a flag to select term
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportScheduleResponse'
+      '400':
+        description: |
+          Validation error:
+          - No file uploaded
+          - Term dates incomplete in DB
+          - Excel parsing failure
+      '500':
+        description: Internal server error
+
+/schedules/confirm:
+  post:
+    tags:
+      - Schedules
+    summary: Confirm and save schedules to DB (Staff only)
+    description: Saves the previewed schedules. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              schedules:
+                type: array
+                items:
+                  type: object
+    responses:
+      '200':
+        description: Schedules saved successfully
+      '400':
+        description: No data provided
+      '500':
+        description: Internal server error
+
+/schedules:
+  get:
+    tags:
+      - Schedules
+    summary: Get all class schedules
+    description: Public access to view all class schedules across all rooms.
+    responses:
+      '200':
+        description: List of all schedules
+      '500':
+        description: Internal server error
+
+/schedules/allScheduleLog:
+  get:
+    tags:
+      - Schedules
+    summary: Get distinct rooms with schedules (Staff only)
+    description: Returns a list of rooms that have schedules. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of rooms found in schedules
+      '500':
+        description: Internal server error
+
+/schedules/{id}:
+  get:
+    tags:
+      - Schedules
+    summary: Get schedules for a specific room
+    description: Public access to view schedules for a specific room.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Room ID
+    responses:
+      '200':
+        description: List of schedules for the room
+      '500':
+        description: Internal server error
+  put:
+    tags:
+      - Schedules
+    summary: Move schedules to another room (Staff only)
+    description: Updates room_id for all schedules in a room. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Current Room ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - new_room_id
+            properties:
+              new_room_id:
+                type: string
+    responses:
+      '200':
+        description: Schedules moved successfully
+      '400':
+        description: Missing new room ID, same room ID, or conflict in target room
+      '404':
+        description: No schedules found in original room
+      '500':
+        description: Internal server error
+  delete:
+    tags:
+      - Schedules
+    summary: Delete all schedules in a room (Staff only)
+    description: Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: All schedules in the room deleted
+      '404':
+        description: No schedules found in the room
+      '500':
+        description: Internal server error
+
+/schedules/{id}/status:
+  patch:
+    tags:
+      - Schedules
+    summary: Update class status (Cancel/Reactivate)
+    description: Allows cancelling a class. For 'staff' or 'teacher' (owner) role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Schedule ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - temporarily_closed
+            properties:
+              temporarily_closed:
+                type: boolean
+              closed_reason:
+                type: string
+    responses:
+      '200':
+        description: Status updated successfully
+      '400':
+        description: Invalid input value
+      '403':
+        description: Unauthorized - Not staff or teacher owner
+      '404':
+        description: Schedule not found
+      '500':
+        description: Internal server error
+
+/schedules/subjects/{room_id}:
+  get:
+    tags:
+      - Schedules
+    summary: Get unique subjects in a room (Staff only)
+    description: Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: List of subjects
+      '400':
+        description: Missing room ID
+      '500':
+        description: Internal server error
+
+/schedules/editSubjects/{room_id}:
+  patch:
+    tags:
+      - Schedules
+    summary: Batch edit subject schedules (Staff only)
+    description: Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BatchEditSubjectRequest'
+    responses:
+      '200':
+        description: Subject schedules updated
+      '400':
+        description: Missing data or internal schedule collision
+      '404':
+        description: Teacher or old subject not found
+      '409':
+        description: Conflict with existing bookings (Requires force_cancel)
+      '500':
+        description: Internal server error
+
+/schedules/deleteSubjects/{room_id}:
+  delete:
+    tags:
+      - Schedules
+    summary: Delete specific subject schedules (Staff only)
+    description: Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: room_id
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - course_code
+              - subject_name
+              - sec
+            properties:
+              course_code:
+                type: string
+              subject_name:
+                type: string
+              sec:
+                type: string
+    responses:
+      '200':
+        description: Subject schedules deleted
+      '400':
+        description: Missing parameters
+      '403':
+        description: Forbidden - Not authorized to delete
+      '404':
+        description: Subject not found in room
+      '500':
+        description: Internal server error
+
+/schedules/export-excel:
+  get:
+    tags:
+      - Schedules
+    summary: Export term report to Excel (Staff only)
+    description: Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: startDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: endDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+    responses:
+      '200':
+        description: Excel file generated
+        content:
+          application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+            schema:
+              type: string
+              format: binary
+      '400':
+        description: Missing startDate or endDate
+      '500':
+        description: Internal server error
+
+/schedules/showReport:
+  get:
+    tags:
+      - Schedules
+    summary: Get weekly usage report (Staff and Teacher)
+    description: Returns usage report for the current week. Accessible by Staff and Teachers.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: Weekly report data
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleReportResponse'
+      '500':
+        description: Internal server error
+
+/schedules/showReportForStaff:
+  get:
+    tags:
+      - Schedules
+    summary: Get full term report (Staff only)
+    description: Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: Term report data for staff
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffReportResponse'
+      '404':
+        description: No term found in system
+      '500':
+        description: Internal server error
+
+/schedules/reupload/{id}:
+  post:
+    tags:
+      - Schedules
+    summary: Preview Excel update for a room (Staff only)
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Room ID
+    requestBody:
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              file:
+                type: string
+                format: binary
+    responses:
+      '200':
+        description: OK - Returns preview data
+      '400':
+        description: No file, missing term data, or room mismatch in file
+      '500':
+        description: Internal server error
+
+/schedules/reconfirm/{id}:
+  put:
+    tags:
+      - Schedules
+    summary: Confirm and overwrite schedules for a room (Staff only)
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Room ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              schedules:
+                type: array
+                items:
+                  type: object
+    responses:
+      '200':
+        description: Room schedules updated
+      '400':
+        description: No data provided
+      '500':
+        description: Internal server error

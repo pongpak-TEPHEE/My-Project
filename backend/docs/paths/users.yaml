@@ -1,0 +1,97 @@
+/users:
+  get:
+    tags:
+      - Users
+    summary: Get all users (Any logged-in user)
+    description: Returns a list of all users. Requires authentication.
+    security:
+      - bearerAuth: []
+    responses:
+      '200':
+        description: List of users
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FullUser'
+      '500':
+        description: Internal server error
+
+/users/create:
+  post:
+    tags:
+      - Users
+    summary: Create new user (Staff only)
+    description: Adds a new user. Only for users with 'staff' role.
+    security:
+      - bearerAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateUserRequest'
+    responses:
+      '201':
+        description: User created successfully
+      '400':
+        description: |
+          Validation error:
+          - Email domain not @ku.th
+          - Missing required fields
+          - Email or Full Name already exists
+      '500':
+        description: Internal server error
+
+/users/edit/{user_id}:
+  put:
+    tags:
+      - Users
+    summary: Edit user details (Staff and Teacher)
+    description: Only for users with 'staff' or 'teacher' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EditUserRequest'
+    responses:
+      '200':
+        description: User updated successfully
+      '400':
+        description: Email domain not @ku.th
+      '404':
+        description: User not found
+      '500':
+        description: Internal server error
+
+/users/delete/{user_id}:
+  patch:
+    tags:
+      - Users
+    summary: Delete or Suspend user (Staff and Teacher)
+    description: Only for users with 'staff' or 'teacher' role.
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: User deleted or account suspended
+      '404':
+        description: User not found during soft delete
+      '500':
+        description: Internal server error

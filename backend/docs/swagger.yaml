@@ -1,0 +1,35 @@
+openapi: 3.0.0
+info:
+  title: KUSRC-SCI Room Booking API
+  description: API documentation for the KUSRC-SCI Room Booking System
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+tags:
+  - name: Auth
+    description: Authentication and Token management
+  - name: Bookings
+    description: Room booking operations
+  - name: Rooms
+    description: Room information and search
+  - name: Schedule
+    description: Class schedule and imports
+  - name: Term
+    description: Academic semester management
+  - name: Users
+    description: User profile and management
+
+# หมายเหตุ: ไม่ต้องใส่ paths: ตรงนี้ เพราะ swagger-jsdoc จะไปอ่านจากไฟล์แยกใน docs/paths/*.yaml ให้เองครับ
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []

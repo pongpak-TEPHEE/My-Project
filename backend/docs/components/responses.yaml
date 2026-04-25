@@ -1,0 +1,45 @@
+# Common Responses
+UnauthorizedError:
+  description: Access token is missing or invalid
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/ErrorResponse'
+
+ForbiddenError:
+  description: User does not have the necessary permissions
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/ErrorResponse'
+
+NotFoundError:
+  description: The requested resource was not found
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/ErrorResponse'
+
+ValidationError:
+  description: Invalid input data
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/ErrorResponse'
+
+InternalServerError:
+  description: Internal server error
+  content:
+    application/json:
+      schema:
+        $ref: './schemas.yaml#/ErrorResponse'
+
+SuccessResponse:
+  description: Request successful
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          message:
+            type: string
